@@ -98,7 +98,7 @@ convention de dossier, sans déclaration dans le manifeste :
 - Le relecteur est invoqué par la procédure « Clôturer » sous le nom
   `coutcouticket:relecteur-cloture`, avec l'id du ticket et la racine du projet. Il juge,
   donc il vit dans le plugin et non dans le binaire. Il n'utilise que la CLI
-  (`show`, `files`, `validate`) et git en lecture : pas de dépendance au démon MCP.
+  (`show`, `files`, `validate`, `list`) et git en lecture : pas de dépendance au démon MCP.
 - Lecture seule : `disallowedTools: Write, Edit, NotebookEdit`, et le prompt limite Bash
   aux commandes de lecture. Un échec git doit apparaître dans la section « Git » du
   verdict, qui passe alors à `À CORRIGER`.
