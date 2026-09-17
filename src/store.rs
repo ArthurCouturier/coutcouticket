@@ -143,8 +143,13 @@ impl Project {
         self.global_dir().join("BOARD.md")
     }
 
+    /// Chemin relatif à la racine, toujours avec des `/` (même sous Windows) :
+    /// affichages, board et outils MCP identiques sur toutes les plateformes.
     pub fn rel(&self, path: &Path) -> String {
-        path.strip_prefix(&self.root).unwrap_or(path).to_string_lossy().to_string()
+        match path.strip_prefix(&self.root) {
+            Ok(rel) => rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"),
+            Err(_) => path.to_string_lossy().to_string(),
+        }
     }
 
     // -----------------------------------------------------------------------

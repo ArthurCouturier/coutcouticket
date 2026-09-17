@@ -61,12 +61,21 @@ impl InitReport {
 /// Chemin absolu du binaire courant, écrit dans les hooks : un client git graphique
 /// hérite du PATH de launchd, sans ~/.cargo/bin ni /opt/homebrew/bin.
 /// Non canonicalisé : un lien stable (Homebrew) survit mieux aux mises à jour que sa cible.
+/// Sous Windows, au format du sh de Git for Windows (`C:/…/coutcouticket.exe`).
 fn current_binary() -> Option<String> {
     let exe = std::env::current_exe().ok()?;
     if !exe.is_absolute() {
         return None;
     }
-    exe.to_str().map(str::to_owned)
+    let exe = exe.to_str()?;
+    if cfg!(windows) { Some(windows_sh_path(exe)) } else { Some(exe.to_owned()) }
+}
+
+/// Chemin Windows lisible par le sh de Git for Windows (MSYS) : barres obliques,
+/// sans préfixe verbatim. `C:/Users/…` est accepté tel quel par MSYS, `.exe` compris.
+fn windows_sh_path(path: &str) -> String {
+    let path = path.strip_prefix(r"\\?\").unwrap_or(path);
+    path.replace('\\', "/")
 }
 
 /// Cite une chaîne pour sh entre apostrophes.
@@ -104,7 +113,7 @@ pub fn init(path: &Path, opts: InitOptions) -> Result<InitReport> {
     if !path.is_dir() {
         bail!("{} n'est pas un dossier", path.display());
     }
-    let root = path.canonicalize()?;
+    let root = fsutil::canonicalize(path)?;
     let mut report = InitReport { root: root.display().to_string(), ..Default::default() };
 
     // 1. Configuration
@@ -343,6 +352,14 @@ mod tests {
             let out = Command::new("sh").arg("-c").arg(format!("printf %s {}", sh_quote(s))).output().unwrap();
             assert_eq!(String::from_utf8(out.stdout).unwrap(), s);
         }
+    }
+
+    #[test]
+    fn chemin_windows_pour_le_sh_de_git() {
+        assert_eq!(windows_sh_path(r"C:\Users\Léa\bin\coutcouticket.exe"), "C:/Users/Léa/bin/coutcouticket.exe");
+        assert_eq!(windows_sh_path(r"\\?\D:\a\coutcouticket.exe"), "D:/a/coutcouticket.exe");
+        let hook = hook_script("pre-commit", Some(&windows_sh_path(r"C:\Program Files\cct\coutcouticket.exe")));
+        assert!(hook.contains("cct='C:/Program Files/cct/coutcouticket.exe'"), "{hook}");
     }
 
     #[test]

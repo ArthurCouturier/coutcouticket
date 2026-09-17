@@ -23,7 +23,7 @@ fn run(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<Output> {
     match cmd.output() {
         Ok(o) => Ok(o),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => bail!(
-            "binaire git « {} » introuvable. Installer git (macOS : « xcode-select --install ») ou corriger le PATH, puis relancer.",
+            "binaire git « {} » introuvable. Installer git (macOS : « xcode-select --install », Windows : Git for Windows) ou corriger le PATH, puis relancer.",
             bin.to_string_lossy()
         ),
         Err(e) => bail!("impossible de lancer git « {} » : {e}", bin.to_string_lossy()),
@@ -223,13 +223,24 @@ pub fn show_prefix(root: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::process::ExitStatusExt;
     use std::process::ExitStatus;
+
+    #[cfg(unix)]
+    fn status(code: i32) -> ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        ExitStatus::from_raw(code << 8)
+    }
+
+    #[cfg(windows)]
+    fn status(code: i32) -> ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+        ExitStatus::from_raw(code as u32)
+    }
 
     const XCODE: &str = "You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license' from within a Terminal window to review and agree to the Xcode and Apple SDKs license.";
 
     fn output(code: i32, stderr: &str) -> Output {
-        Output { status: ExitStatus::from_raw(code << 8), stdout: vec![], stderr: stderr.as_bytes().to_vec() }
+        Output { status: status(code), stdout: vec![], stderr: stderr.as_bytes().to_vec() }
     }
 
     #[test]

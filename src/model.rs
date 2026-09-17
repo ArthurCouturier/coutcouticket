@@ -204,6 +204,14 @@ impl TicketDoc {
 
     pub fn parse(content: &str) -> Result<Self> {
         let content = content.strip_prefix('\u{feff}').unwrap_or(content);
+        // Fins de ligne CRLF (git avec core.autocrlf sous Windows) : lues comme LF.
+        let normalized;
+        let content = if content.contains("\r\n") {
+            normalized = content.replace("\r\n", "\n");
+            normalized.as_str()
+        } else {
+            content
+        };
         let rest = content
             .strip_prefix("---\n")
             .ok_or_else(|| anyhow!("ticket.md doit commencer par une ligne « --- »"))?;
@@ -339,6 +347,15 @@ mod tests {
         let text = doc.render(4);
         assert!(text.contains("id: \"0013\""));
         let parsed = TicketDoc::parse(&text).unwrap();
+        assert_eq!(parsed.front, doc.front);
+        assert_eq!(parsed.body, doc.body);
+    }
+
+    /// Ticket extrait par git avec core.autocrlf (Git for Windows).
+    #[test]
+    fn fins_de_ligne_crlf() {
+        let doc = sample();
+        let parsed = TicketDoc::parse(&doc.render(4).replace('\n', "\r\n")).unwrap();
         assert_eq!(parsed.front, doc.front);
         assert_eq!(parsed.body, doc.body);
     }

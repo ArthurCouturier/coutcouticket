@@ -164,10 +164,14 @@ enum Cmd {
 #[derive(Subcommand)]
 enum DaemonCmd {
     /// Lance le démon au premier plan.
-    Run,
-    /// Installe et démarre le LaunchAgent macOS.
+    Run {
+        /// Écrit le journal dans ce fichier (et le pid à côté) au lieu de la sortie d'erreur.
+        #[arg(long, hide = true)]
+        log_file: Option<PathBuf>,
+    },
+    /// Installe et démarre le démon à l'ouverture de session (LaunchAgent macOS, tâche planifiée Windows).
     Install,
-    /// Arrête et retire le LaunchAgent.
+    /// Arrête le démon et retire son démarrage automatique.
     Uninstall,
     /// Vérifie que le démon répond.
     Status,
@@ -351,10 +355,10 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Mcp => runtime()?.block_on(mcp::serve_stdio())?,
         Cmd::Daemon { action } => match action {
-            DaemonCmd::Run => runtime()?.block_on(daemon::run())?,
+            DaemonCmd::Run { log_file } => runtime()?.block_on(daemon::run(log_file.as_deref()))?,
             DaemonCmd::Install => println!("{}", daemon::install()?),
             DaemonCmd::Uninstall => println!("{}", daemon::uninstall()?),
-            DaemonCmd::Status => println!("{}", daemon::health()?),
+            DaemonCmd::Status => println!("{}", daemon::status()?),
         },
         Cmd::Projects { action } => {
             let mut reg = Registry::load()?;

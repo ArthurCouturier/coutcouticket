@@ -23,8 +23,11 @@ impl Env {
         let home = tmp.path().join("cct-home");
         fs::create_dir_all(&repo).unwrap();
         fs::create_dir_all(&home).unwrap();
-        let bin_dir = Path::new(BIN).parent().unwrap();
-        let path_var = format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap());
+        let bin_dir = Path::new(BIN).parent().unwrap().to_path_buf();
+        let path_var = std::env::join_paths(std::iter::once(bin_dir).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())))
+            .unwrap()
+            .into_string()
+            .unwrap();
         let env = Env { _tmp: tmp, repo, home, path_var };
         env.git(&["init", "-q", "-b", "main"]);
         env.git(&["config", "user.email", "test@example.com"]);
@@ -310,8 +313,10 @@ fn dependances_cli() {
 // Hooks git hors du terminal (client graphique : PATH de launchd)
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
 const LAUNCHD_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 
+#[cfg(unix)]
 impl Env {
     /// Commande lancée comme par un client git graphique : environnement vide, PATH minimal.
     fn gui(&self, args: &[&str]) -> Output {
@@ -327,6 +332,7 @@ impl Env {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn hooks_hors_du_path() {
     let env = Env::new();
@@ -586,6 +592,43 @@ fn daemon_ecoute_avant_le_watcher() {
     assert!(TcpStream::connect(("127.0.0.1", port)).is_ok());
 }
 
+/// `daemon run --log-file` (service Windows) : journal dans le fichier, pid à côté.
+#[test]
+fn daemon_journal_dans_un_fichier() {
+    let env = Env::new();
+    env.ok(&["init"]);
+    let port = free_port();
+    fs::write(env.home.join("daemon.toml"), format!("port = {port}\ntoken = \"t\"\n")).unwrap();
+    let log = env.home.join("logs").join("daemon.log");
+    let daemon = Kill(
+        env.cmd(BIN)
+            .args(["daemon", "run", "--log-file"])
+            .arg(&log)
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let start = Instant::now();
+    let text = loop {
+        let text = fs::read_to_string(&log).unwrap_or_default();
+        if text.contains("surveillance prête") {
+            break text;
+        }
+        assert!(start.elapsed() < Duration::from_secs(10), "journal incomplet :\n{text}");
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert!(text.contains("à l'écoute sur http://127.0.0.1:"), "{text}");
+    let pid = fs::read_to_string(log.with_file_name("daemon.pid")).unwrap();
+    assert_eq!(pid, daemon.0.id().to_string());
+
+    // Seconde instance : refusée, l'erreur va au journal et le pid n'est pas écrasé.
+    let out = env.cmd(BIN).args(["daemon", "run", "--log-file"]).arg(&log).output().unwrap();
+    assert!(!out.status.success());
+    let text = fs::read_to_string(&log).unwrap();
+    assert!(text.contains("arrêt sur erreur : impossible d'écouter"), "{text}");
+    assert_eq!(fs::read_to_string(log.with_file_name("daemon.pid")).unwrap(), pid);
+}
+
 
 // ---------------------------------------------------------------------------
 // .gitignore du dossier de notes
@@ -663,6 +706,7 @@ fn gitignore_des_notes() {
 /// Faux `claude` : l'enregistrement vit dans `$FAKE_CLAUDE_STATE` (fichier absent =
 /// serveur absent), chaque appel est journalisé dans `$FAKE_CLAUDE_LOG`. Reproduit le
 /// format de `claude mcp get` et le refus de `mcp add` sur un nom existant.
+#[cfg(unix)]
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
 echo "$*" >> "$FAKE_CLAUDE_LOG"
 state="$FAKE_CLAUDE_STATE"
@@ -692,6 +736,7 @@ case "$1 $2" in
 esac
 "#;
 
+#[cfg(unix)]
 #[test]
 fn setup_claude_idempotent() {
     use std::os::unix::fs::PermissionsExt;
@@ -776,12 +821,14 @@ fn setup_claude_idempotent() {
 // ---------------------------------------------------------------------------
 
 /// Reproduit /usr/bin/git sous macOS quand la licence Xcode n'est pas acceptée.
+#[cfg(unix)]
 const FAKE_GIT_XCODE: &str = "#!/bin/sh
 echo \"You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license' from within a Terminal window to review and agree to the Xcode and Apple SDKs license.\" >&2
 exit 69
 ";
 
 /// Vrai git pour rev-parse (le dépôt est reconnu), panne générique pour le reste.
+#[cfg(unix)]
 const FAKE_GIT_BROKEN: &str = "#!/bin/sh
 case \" $* \" in
   *\" rev-parse \"*) exec git \"$@\" ;;
@@ -790,6 +837,7 @@ echo \"fatal: panne simulée\" >&2
 exit 128
 ";
 
+#[cfg(unix)]
 #[test]
 fn git_en_echec() {
     use std::os::unix::fs::PermissionsExt;
@@ -887,4 +935,121 @@ fn git_en_echec() {
     let out = env.cmd(BIN).args(["show", "1", "--json"]).current_dir(&hors).output().unwrap();
     let ctx: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
     assert!(ctx["git_error"].is_null() && ctx["current_branch"].is_null(), "{ctx}");
+}
+
+// ---------------------------------------------------------------------------
+// Windows : hooks avec le sh de Git for Windows, tâche planifiée du démon
+// ---------------------------------------------------------------------------
+
+/// Hooks exécutés par le sh de Git for Windows, binaire noté au format `C:/…/coutcouticket.exe`,
+/// avec un PATH qui ne contient pas le dossier du binaire (client git graphique).
+#[cfg(windows)]
+#[test]
+fn hooks_git_for_windows() {
+    let env = Env::new();
+    env.ok(&["init"]);
+    let pre_commit = env.repo.join(".git/hooks/pre-commit");
+    let noted = BIN.replace('\\', "/");
+    let hook = fs::read_to_string(&pre_commit).unwrap();
+    assert!(hook.contains(&format!("cct='{noted}'")), "{hook}");
+    assert!(!hook.contains('\r'), "fins de ligne CRLF dans le hook");
+
+    let bin_dir = Path::new(BIN).parent().unwrap().to_path_buf();
+    let without_bin = std::env::join_paths(std::env::split_paths(&std::env::var_os("PATH").unwrap()).filter(|d| d != &bin_dir)).unwrap();
+    let git_without_bin = |args: &[&str]| env.cmd("git").env("PATH", &without_bin).args(args).output().unwrap();
+
+    // --- commit hors du PATH : accepté, trailer ajouté ; branche non conforme refusée
+    env.ok(&["new", "-t", "Tester les hooks", "-k", "fix"]);
+    env.git_ok(&["add", "-A"]);
+    env.git_ok(&["commit", "-q", "-m", "init notes"]);
+    env.ok(&["start", "1"]);
+    let out = git_without_bin(&["commit", "-q", "--allow-empty", "-m", "depuis un client graphique"]);
+    assert!(out.status.success(), "commit refusé :\n{}", stderr(&out));
+    let msg = env.git_ok(&["log", "-1", "--pretty=%B"]);
+    assert!(msg.contains("Ticket: 0001"), "trailer absent : {msg}");
+    env.git_ok(&["switch", "-q", "-c", "wip"]);
+    let refused = git_without_bin(&["commit", "-q", "--allow-empty", "-m", "wip"]);
+    assert!(!refused.status.success() && stderr(&refused).contains("non conforme"), "{}", stderr(&refused));
+    env.git_ok(&["switch", "-q", "fix/0001-tester-les-hooks"]);
+
+    // --- binaire noté disparu et absent du PATH : message d'erreur explicite
+    let moved = env.home.join("bin temporaire");
+    fs::create_dir_all(&moved).unwrap();
+    let copy = moved.join("coutcouticket.exe");
+    fs::copy(BIN, &copy).unwrap();
+    let out = env.cmd(copy.to_str().unwrap()).arg("init").output().unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    let noted = copy.to_str().unwrap().replace('\\', "/");
+    assert!(fs::read_to_string(&pre_commit).unwrap().contains(&noted));
+    let out = git_without_bin(&["commit", "-q", "--allow-empty", "-m", "binaire copié"]);
+    assert!(out.status.success(), "commit refusé :\n{}", stderr(&out));
+    fs::remove_file(&copy).unwrap();
+    let refused = git_without_bin(&["commit", "-q", "--allow-empty", "-m", "introuvable"]);
+    assert!(!refused.status.success(), "commit accepté sans binaire");
+    assert!(stderr(&refused).contains("coutcouticket introuvable"), "{}", stderr(&refused));
+}
+
+/// Sortie de schtasks, en UTF-16 ou en page de code locale.
+#[cfg(windows)]
+fn schtasks_query(name: &str) -> (bool, String) {
+    let out = Command::new("schtasks").args(["/Query", "/TN", name, "/XML"]).output().unwrap();
+    let bytes: Vec<u8> = out.stdout.iter().copied().filter(|b| *b != 0).collect();
+    (out.status.success(), String::from_utf8_lossy(&bytes).to_string())
+}
+
+/// Installation réelle de la tâche planifiée : modifie la session Windows courante,
+/// donc lancée seulement si COUTCOUTICKET_TEST_WINDOWS_SERVICE est défini (CI).
+/// La tâche ne reçoit pas les variables du test : configuration réelle (%APPDATA%).
+#[cfg(windows)]
+#[test]
+fn daemon_tache_planifiee_windows() {
+    if std::env::var_os("COUTCOUTICKET_TEST_WINDOWS_SERVICE").is_none() {
+        eprintln!("ignoré : définir COUTCOUTICKET_TEST_WINDOWS_SERVICE=1 pour installer réellement la tâche planifiée");
+        return;
+    }
+    const TASK: &str = "coutcouticket-daemon";
+    let run = |args: &[&str]| Command::new(BIN).args(args).env_remove("COUTCOUTICKET_HOME").env_remove("COUTCOUTICKET_DAEMON_TASK").output().unwrap();
+    let wait_status = || {
+        let start = Instant::now();
+        loop {
+            let out = run(&["daemon", "status"]);
+            if out.status.success() {
+                return stdout(&out);
+            }
+            assert!(start.elapsed() < Duration::from_secs(20), "démon injoignable : {}", stderr(&out));
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    };
+
+    // --- installation : tâche à l'ouverture de session de l'utilisateur, sans élévation
+    let out = run(&["daemon", "install"]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    assert!(stdout(&out).contains(&format!("tâche planifiée « {TASK} »")), "{}", stdout(&out));
+    let (exists, xml) = schtasks_query(TASK);
+    assert!(exists, "tâche absente après install");
+    for needle in ["LogonTrigger", "LeastPrivilege", "InteractiveToken", "--headless", "daemon run --log-file", "PT0S"] {
+        assert!(xml.contains(needle), "{needle} absent :\n{xml}");
+    }
+    assert!(wait_status().contains("ok"));
+    let log_dir = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("coutcouticket");
+    let first_pid = fs::read_to_string(log_dir.join("daemon.pid")).unwrap();
+    assert!(fs::read_to_string(log_dir.join("daemon.log")).unwrap().contains("à l'écoute"));
+
+    // --- réinstallation idempotente : l'ancienne instance est remplacée
+    let out = run(&["daemon", "install"]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    assert!(wait_status().contains("ok"));
+    let start = Instant::now();
+    while fs::read_to_string(log_dir.join("daemon.pid")).unwrap_or_default() == first_pid {
+        assert!(start.elapsed() < Duration::from_secs(20), "démon non relancé par install");
+        std::thread::sleep(Duration::from_millis(250));
+    }
+
+    // --- désinstallation : tâche retirée, démon arrêté, status explicite
+    let out = run(&["daemon", "uninstall"]);
+    assert!(out.status.success(), "{}\n{}", stdout(&out), stderr(&out));
+    assert!(!schtasks_query(TASK).0, "tâche encore présente après uninstall");
+    let out = run(&["daemon", "status"]);
+    assert!(!out.status.success(), "démon encore joignable : {}", stdout(&out));
+    assert!(stderr(&out).contains("tâche planifiée absente"), "{}", stderr(&out));
 }
