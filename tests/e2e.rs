@@ -374,6 +374,86 @@ fn hooks_hors_du_path() {
 }
 
 // ---------------------------------------------------------------------------
+// Vue de tous les projets
+// ---------------------------------------------------------------------------
+
+#[test]
+fn overview_plusieurs_projets() {
+    let env = Env::new();
+    let base = env.repo.parent().unwrap().to_path_buf();
+    env.ok(&["init"]);
+    env.ok(&["new", "-t", "Tâche locale", "-p", "p1"]);
+    env.ok(&["new", "-t", "Suite locale", "--blocked-by", "1"]);
+    env.ok(&["new", "-t", "Déjà faite"]);
+    env.ok(&["status", "3", "done"]);
+
+    // Deuxième projet, un ticket en cours ; troisième projet enregistré puis supprimé.
+    let autre = base.join("autre-projet");
+    let disparu = base.join("projet-disparu");
+    for dir in [&autre, &disparu] {
+        fs::create_dir_all(dir).unwrap();
+        assert!(env.cmd("git").arg("-C").arg(dir).args(["init", "-q", "-b", "main"]).status().unwrap().success());
+        env.ok(&["init", dir.to_str().unwrap()]);
+    }
+    let autre_s = autre.to_str().unwrap();
+    env.ok(&["-C", autre_s, "new", "-t", "Chantier distant", "-p", "p3"]);
+    env.ok(&["-C", autre_s, "status", "1", "in-progress"]);
+    let disparu_canon = disparu.canonicalize().unwrap();
+    fs::remove_dir_all(&disparu).unwrap();
+
+    let out = env.cct(&["overview"]);
+    let text = stdout(&out);
+    assert!(out.status.success(), "la vue échoue malgré le projet introuvable :\n{text}\n{}", stderr(&out));
+    assert!(text.contains("3 ticket(s) ouvert(s) dans 3 projet(s)."), "{text}");
+    let pos = |needle: &str| text.find(needle).unwrap_or_else(|| panic!("« {needle} » absent :\n{text}"));
+    assert!(pos("En cours (1)") < pos("autre-projet  0001  p3") && pos("autre-projet  0001") < pos("À faire (2)"), "{text}");
+    assert!(pos("mon-projet    0001  p1") < pos("mon-projet    0002  p2"), "{text}");
+    assert!(text.contains("Suite locale  (bloqué par 0001)"), "{text}");
+    assert!(!text.contains("Déjà faite"), "ticket fermé affiché :\n{text}");
+    assert!(text.contains(&format!("⚠️ {} : projet introuvable", disparu_canon.display())), "{text}");
+
+    let json: serde_json::Value = serde_json::from_str(&env.ok(&["overview", "--json"])).unwrap();
+    assert_eq!(json["projects"], 3);
+    let tickets = json["tickets"].as_array().unwrap();
+    let ids: Vec<(String, String)> = tickets.iter().map(|t| (t["project"].as_str().unwrap().into(), t["id"].as_str().unwrap().into())).collect();
+    assert_eq!(ids, [("autre-projet", "0001"), ("mon-projet", "0001"), ("mon-projet", "0002")].map(|(a, b)| (a.to_string(), b.to_string())));
+    assert_eq!(tickets[0]["project_path"], autre.canonicalize().unwrap().display().to_string());
+    assert_eq!(tickets[2]["open_blockers"], serde_json::json!(["0001"]));
+    assert_eq!(json["warnings"].as_array().unwrap().len(), 1, "{json}");
+
+    let filtered = env.ok(&["overview", "--status", "todo", "--priority", "p2"]);
+    assert!(filtered.contains("1 ticket(s)") && filtered.contains("Suite locale"), "{filtered}");
+    let out = env.cct(&["overview", "--status", "done"]);
+    assert!(!out.status.success() && stderr(&out).contains("tickets ouverts"), "{}", stderr(&out));
+
+    // MCP stdio : tickets_overview sans paramètre project, depuis un dossier hors projet.
+    let mut child = env
+        .cmd(BIN)
+        .current_dir(&base)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut reader = BufReader::new(child.stdout.take().unwrap());
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}));
+    recv(&mut reader, 1);
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tickets_overview","arguments":{"status":"in-progress"}}}));
+    let resp = recv(&mut reader, 2);
+    assert_ne!(resp["result"]["isError"], true, "{resp}");
+    let view: serde_json::Value = serde_json::from_str(resp["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["tickets"].as_array().unwrap().len(), 1, "{view}");
+    assert_eq!(view["tickets"][0]["title"], "Chantier distant");
+    assert!(view["warnings"][0]["message"].as_str().unwrap().contains("introuvable"), "{view}");
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+// ---------------------------------------------------------------------------
 // MCP stdio
 // ---------------------------------------------------------------------------
 
@@ -416,7 +496,7 @@ fn mcp_stdio() {
     send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}));
     let tools = recv(&mut reader, 2);
     let names: Vec<String> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
-    for expected in ["ticket_create", "ticket_start", "ticket_set_status", "ticket_log", "ticket_decide", "ticket_list", "ticket_context", "ticket_files", "notes_validate", "ticket_depend"] {
+    for expected in ["ticket_create", "ticket_start", "ticket_set_status", "ticket_log", "ticket_decide", "ticket_list", "ticket_context", "ticket_files", "notes_validate", "ticket_depend", "tickets_overview"] {
         assert!(names.contains(&expected.to_string()), "outil {expected} absent : {names:?}");
     }
     let status_schema = tools["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "ticket_set_status").unwrap().to_string();
@@ -535,6 +615,11 @@ fn daemon_http_auth_et_watcher() {
     let (_, _, body) = http(port, "POST", "/mcp", &[accept, ctype, ("Authorization", &bearer), sess, proto], &call);
     assert!(body.contains("Premier ticket"), "{body}");
 
+    // tickets_overview : pas de paramètre project, même en mode démon
+    let (_, _, body) = http(port, "POST", "/mcp", &[accept, ctype, ("Authorization", &bearer), sess, proto],
+        r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"tickets_overview","arguments":{}}}"#);
+    assert!(body.contains("Premier ticket") && body.contains("project_path") && !body.contains("obligatoire"), "{body}");
+
     // watcher : une édition manuelle doit régénérer BOARD.md, même pendant que
     // quelqu'un relit les notes en continu (la boucle ci-dessous lit toutes les 100 ms,
     // ce qui empêchait la régénération avant la correction de l'anti-rebond)
@@ -550,6 +635,25 @@ fn daemon_http_auth_et_watcher() {
         assert!(start.elapsed() < Duration::from_secs(10), "BOARD.md non régénéré par le watcher");
         std::thread::sleep(Duration::from_millis(100));
     }
+
+    // OVERVIEW.md (config globale) suit aussi les éditions, et le registre.
+    let overview = env.home.join("OVERVIEW.md");
+    let wait_overview = |needle: &str| {
+        let start = Instant::now();
+        loop {
+            let text = fs::read_to_string(&overview).unwrap_or_default();
+            if text.contains(needle) {
+                return text;
+            }
+            assert!(start.elapsed() < Duration::from_secs(10), "OVERVIEW.md sans « {needle} » :\n{text}");
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    };
+    let text = wait_overview("| p0 |");
+    assert!(text.contains("| mon-projet | [0001](<") && text.contains("Premier ticket"), "{text}");
+    let registry = fs::read_to_string(env.home.join("projects.toml")).unwrap();
+    fs::write(env.home.join("projects.toml"), registry.replace("projects = [", "projects = [\"/chemin/disparu\", ")).unwrap();
+    wait_overview("`/chemin/disparu` : projet introuvable");
 }
 
 /// L'écoute précède l'initialisation du watcher, et le journal est horodaté
