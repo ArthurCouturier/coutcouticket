@@ -102,8 +102,19 @@ Dans cet ordre, sans en sauter :
    page de `0-notes/doc/` concernée, ou la créer, et sa ligne dans `INDEX.md`.
    La doc décrit l'état actuel, pas l'historique.
 3. `ticket_log` avec le résumé final et `next_step` = « Aucune » (ou le ticket de suite).
-4. `ticket_set_status` → `done`, `note` = résumé en une ou deux phrases.
-5. Proposer les tickets de suite éventuels, sans les créer d'office.
+4. Faire relire par le subagent `coutcouticket:relecteur-cloture` (outil Agent), en lui
+   donnant l'id du ticket et le chemin absolu de la racine du projet. Il ne modifie rien
+   et rend un verdict `OK` ou `À CORRIGER` avec une liste d'actions.
+   - `À CORRIGER` : traiter chaque point (décocher un critère non prouvé, compléter la
+     doc, etc.), consigner les corrections avec `ticket_log`, puis relancer la relecture.
+     Un point jugé infondé : le dire à l'utilisateur, ne pas l'ignorer en silence.
+   - Échec git signalé : le diff n'a pas été relu. Corriger l'environnement et relancer.
+   - Un critère que seul l'utilisateur peut vérifier : `ticket_set_status` → `review`
+     avec la vérification restante, au lieu de `done`.
+   - Subagent indisponible (plugin non chargé) : le signaler et faire la même
+     vérification soi-même en suivant `agents/relecteur-cloture.md` du plugin.
+5. `ticket_set_status` → `done`, `note` = résumé en une ou deux phrases.
+6. Proposer les tickets de suite éventuels, sans les créer d'office.
 
 ## Documentation technique
 

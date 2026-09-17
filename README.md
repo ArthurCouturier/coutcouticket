@@ -63,7 +63,8 @@ Différent (port ou jeton changé, autre portée) : l'ancien est retiré de sa p
 commande `claude mcp add` est seulement affichée. Binaire `claude` hors du PATH :
 `COUTCOUTICKET_CLAUDE_BIN=/chemin/vers/claude`.
 
-Plugin Claude Code (skill `ticket` + hook de démarrage de session), dans Claude Code :
+Plugin Claude Code (skill `ticket`, subagent `relecteur-cloture` + hook de démarrage de
+session), dans Claude Code :
 
 ```
 /plugin marketplace add ~/dev/coutcouticket
@@ -72,6 +73,11 @@ Plugin Claude Code (skill `ticket` + hook de démarrage de session), dans Claude
 
 Sans clone local, la marketplace s'ajoute depuis GitHub :
 `/plugin marketplace add ArthurCouturier/coutcouticket`.
+
+Le subagent `coutcouticket:relecteur-cloture` relit un ticket avant sa clôture, en
+lecture seule et avec un contexte neuf : critères cochés réellement prouvés, doc et
+`INDEX.md` à jour, journal final prêt. Il rend un verdict `OK` ou `À CORRIGER`. La
+procédure « Clôturer » du skill l'invoque avant `status done`.
 
 Le dossier du binaire (`~/.local/bin` ou `~/.cargo/bin`) doit être dans le `PATH` : le hook de session appelle `coutcouticket`.
 Les hooks git, eux, appellent le binaire par le chemin noté lors de `init` (avec repli

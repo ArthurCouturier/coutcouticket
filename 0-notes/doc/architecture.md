@@ -135,6 +135,29 @@ appellent le cœur, rien de plus.
 - `pre-commit` régénère `BOARD.md` et ne l'ajoute au commit que s'il n'est pas ignoré
   (`git::is_ignored`) : `git add` d'un chemin ignoré échoue et bloquerait le commit.
 
+## Plugin Claude Code
+
+Dossier `plugin/` (manifeste `plugin/.claude-plugin/plugin.json`, marketplace à la
+racine dans `.claude-plugin/marketplace.json`). Les composants sont découverts par
+convention de dossier, sans déclaration dans le manifeste :
+
+| Composant | Fichier | Rôle |
+|---|---|---|
+| Skill `ticket` | `plugin/skills/ticket/SKILL.md` | procédures (Créer, Démarrer, Journaliser, Décider, Clôturer) |
+| Subagent `relecteur-cloture` | `plugin/agents/relecteur-cloture.md` | relecture de clôture en lecture seule, verdict `OK` / `À CORRIGER` |
+| Hook SessionStart | `plugin/hooks/hooks.json` | appelle `coutcouticket hook session-start` |
+
+- Le relecteur est invoqué par la procédure « Clôturer » sous le nom
+  `coutcouticket:relecteur-cloture`, avec l'id du ticket et la racine du projet. Il juge,
+  donc il vit dans le plugin et non dans le binaire. Il n'utilise que la CLI
+  (`show`, `files`, `validate`, `list`) et git en lecture : pas de dépendance au démon MCP.
+- Lecture seule : `disallowedTools: Write, Edit, NotebookEdit`, et le prompt limite Bash
+  aux commandes de lecture. Un échec git doit apparaître dans la section « Git » du
+  verdict, qui passe alors à `À CORRIGER`.
+- Vérifier la structure : `claude plugin validate --strict plugin` (couvre aussi les
+  agents). Un agent de plugin ne peut pas déclarer `hooks`, `mcpServers` ni
+  `permissionMode`.
+
 ## Tests
 
 - Unitaires dans chaque module (`cargo test`).
