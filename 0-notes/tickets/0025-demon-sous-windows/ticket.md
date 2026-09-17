@@ -2,7 +2,7 @@
 id: "0025"
 title: "Démon sous Windows"
 type: feat
-status: review
+status: done
 priority: p2
 projects: [daemon, core]
 created: 2026-09-17
@@ -38,7 +38,7 @@ Preuves (PR brouillon #1, branche feat/0025-demon-sous-windows) :
   `SHA256SUMS` ; la publication (même étape, `*.zip` ajouté) n'a lieu qu'au prochain tag.
 
 Critère 2 : validé par l'utilisateur sur un poste Windows le 2026-09-17 (voir le journal).
-La procédure suivie est celle-ci (poste Windows 10/11, compte standard) :
+La procédure prévue (poste Windows 10/11, compte standard ; le type de compte utilisé n'a pas été précisé) :
 `daemon install` sans invite UAC, `daemon status` → `ok`, aucune fenêtre console après
 déconnexion puis reconnexion, trailer `Ticket:` ajouté aux commits (Git Bash et client
 graphique), `daemon uninstall` qui retire la tâche `coutcouticket-daemon`.

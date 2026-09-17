@@ -22,3 +22,18 @@ Portage Windows prouvé en CI (PR brouillon #1) : build/tests macOS + Windows, h
 Le 2026-09-17, l'utilisateur indique que la vérification sur un poste Windows est validée (procédure des Notes : `daemon install` sans UAC, démarrage à l'ouverture de session sans fenêtre, hooks, `uninstall`). Critère 2 coché. Le binaire Windows sera publié par la release v0.2.0.
 
 **Prochaine étape :** Aucune
+
+## 2026-09-17 17:19 — avancement
+
+Release v0.2.0 publiée (run 35238825629, vert) : https://github.com/ArthurCouturier/coutcouticket/releases/tag/v0.2.0. Archives : `coutcouticket-0.2.0-x86_64-pc-windows-msvc.zip` et `.zip.sha256`, les deux archives macOS, et `SHA256SUMS`, qui liste le zip Windows. La CI de main (run 35238823065) est verte sous macOS et Windows. `install.sh` a installé la 0.2.0 depuis la release dans un dossier temporaire.
+Preuves du ticket :
+- run CI 35236987954 sur main ;
+- essai de release 35235915058 ;
+- release 35238825629 ;
+- validation manuelle de l'utilisateur sur un poste Windows. Le type de compte (standard ou administrateur) n'a pas été précisé.
+
+**Prochaine étape :** Aucune
+
+## 2026-09-17 17:19 — statut : review → done
+
+Démon Windows livré : tâche planifiée à l'ouverture de session, hooks Git for Windows, install.ps1, CI Windows. Binaire publié dans la release v0.2.0 et validé par l'utilisateur sur un poste Windows. Relecture de clôture faite : ses corrections (release, notes) sont appliquées.
