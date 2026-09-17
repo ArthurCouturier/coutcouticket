@@ -239,7 +239,9 @@ pub fn init(path: &Path, opts: InitOptions) -> Result<InitReport> {
             if !already {
                 report.warnings.push(format!(
                     "{notes}/ contient des fichiers suivis par git : .gitignore non modifié, les notes restent versionnées. \
-                     Pour les sortir du dépôt : ajouter « /{notes}/ » à .gitignore puis lancer « git rm -r --cached {notes} »"
+                     Pour les sortir du dépôt : ajouter « /{notes}/ » à .gitignore puis lancer « git rm -r --cached {notes} ». \
+                     Attention : ensuite, basculer sur une branche ou un commit qui suit encore ces fichiers \
+                     écrase les notes locales, puis les supprime au retour. Sauvegarder {notes}/ avant tout changement de branche"
                 ));
             }
         } else if !already {

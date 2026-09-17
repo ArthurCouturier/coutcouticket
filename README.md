@@ -80,6 +80,11 @@ est régénéré par `pre-commit` sans être ajouté au commit. Si des fichiers 
 `0-notes/` sont déjà suivis par git, `init` ne touche pas au `.gitignore` et indique
 comment sortir les notes du dépôt (`git rm -r --cached 0-notes`).
 
+> **Attention :** après cette migration, basculer sur une branche ou un commit qui suit
+> encore `0-notes/` (ancienne branche, `main` non fusionnée, `git bisect`) écrase sans
+> prévenir les notes locales par leur ancienne version, et le retour les supprime.
+> Fusionner la migration partout et sauvegarder `0-notes/` avant tout changement de branche.
+
 ## Conventions
 
 | Élément | Format |

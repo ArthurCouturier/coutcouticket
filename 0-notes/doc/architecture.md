@@ -45,6 +45,9 @@ appellent le cœur, rien de plus.
   `/<notes_dir>/` au `.gitignore` (option `--no-gitignore`) sauf si une règle équivalente
   existe (`ignores_dir`) ou si des fichiers de notes sont déjà suivis (`git::has_tracked_files`) :
   dans ce cas, avertissement seulement.
+  Piège de la migration (`git rm -r --cached`) : git considère les fichiers ignorés comme
+  jetables. Basculer vers un commit qui suit encore les notes les écrase, et le retour
+  les supprime. L'avertissement d'`init` le signale.
 
 ## Démon
 

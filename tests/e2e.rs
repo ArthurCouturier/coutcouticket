@@ -479,6 +479,7 @@ fn gitignore_des_notes() {
     assert!(!tracked.is_empty());
     let out = env.ok(&["init"]);
     assert!(out.contains("git rm -r --cached 0-notes"), "{out}");
+    assert!(out.contains("écrase les notes locales"), "{out}");
     assert!(!env.repo.join(".gitignore").exists());
     assert_eq!(env.git_ok(&["ls-files", "0-notes"]), tracked);
 
