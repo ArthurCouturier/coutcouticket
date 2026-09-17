@@ -58,6 +58,16 @@ appellent le cœur, rien de plus.
   lecteur continu ne doit pas pouvoir bloquer la régénération.
 - Ignorer `BOARD.md` et les fichiers cachés (fichiers temporaires d'écriture atomique).
 
+## Hooks git
+
+- Générés par `init.rs` (`hook_script`), reconnus au marqueur `# coutcouticket-hook`.
+  Un hook sans marqueur n'est jamais modifié ; un hook marqué est réécrit si son
+  contenu diffère du gabarit.
+- Le hook appelle le binaire par le chemin absolu noté lors de `init`
+  (`current_exe`, non canonicalisé), avec repli sur le PATH. Piège : un client git
+  graphique hérite du PATH de launchd (`/usr/bin:/bin:/usr/sbin:/sbin`), sans
+  `~/.cargo/bin` ni `/opt/homebrew/bin`. Binaire déplacé hors du PATH → relancer `init`.
+
 ## Tests
 
 - Unitaires dans chaque module (`cargo test`).

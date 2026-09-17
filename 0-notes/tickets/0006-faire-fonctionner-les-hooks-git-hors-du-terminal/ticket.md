@@ -2,7 +2,7 @@
 id: "0006"
 title: "Faire fonctionner les hooks git hors du terminal"
 type: fix
-status: todo
+status: in-progress
 priority: p1
 projects: [core]
 created: 2026-09-17

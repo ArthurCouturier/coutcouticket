@@ -57,15 +57,42 @@ impl InitReport {
     }
 }
 
-fn hook_script(name: &str) -> String {
+/// Chemin absolu du binaire courant, écrit dans les hooks : un client git graphique
+/// hérite du PATH de launchd, sans ~/.cargo/bin ni /opt/homebrew/bin.
+/// Non canonicalisé : un lien stable (Homebrew) survit mieux aux mises à jour que sa cible.
+fn current_binary() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    if !exe.is_absolute() {
+        return None;
+    }
+    exe.to_str().map(str::to_owned)
+}
+
+/// Cite une chaîne pour sh entre apostrophes.
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+fn hook_script(name: &str, binary: Option<&str>) -> String {
     let call = match name {
-        "prepare-commit-msg" => "exec coutcouticket hook prepare-commit-msg \"$@\"",
-        _ => "exec coutcouticket hook pre-commit",
+        "prepare-commit-msg" => "exec \"$cct\" hook prepare-commit-msg \"$@\"",
+        _ => "exec \"$cct\" hook pre-commit",
+    };
+    let lookup = match binary {
+        Some(bin) => format!(
+            "cct={}\n\
+             if [ ! -x \"$cct\" ]; then\n\
+             \x20 cct=$(command -v coutcouticket 2>/dev/null) || cct=\n\
+             fi\n",
+            sh_quote(bin)
+        ),
+        None => "cct=$(command -v coutcouticket 2>/dev/null) || cct=\n".to_owned(),
     };
     format!(
         "#!/bin/sh\n{HOOK_MARKER} (installé par « coutcouticket init », ne pas éditer)\n\
-         if ! command -v coutcouticket >/dev/null 2>&1; then\n\
-         \x20 echo \"coutcouticket introuvable dans le PATH. Installer le binaire (voir README) ou contourner ponctuellement avec --no-verify.\" >&2\n\
+         {lookup}\
+         if [ -z \"$cct\" ]; then\n\
+         \x20 echo \"coutcouticket introuvable (ni à l'emplacement noté lors de init, ni dans le PATH). Relancer « coutcouticket init » avec le binaire installé, ou contourner ponctuellement avec --no-verify.\" >&2\n\
          \x20 exit 1\n\
          fi\n\
          {call}\n"
@@ -160,9 +187,15 @@ pub fn init(path: &Path, opts: InitOptions) -> Result<InitReport> {
         if git::is_repo(&root) {
             let hooks = git::hooks_dir(&root)?;
             fs::create_dir_all(&hooks)?;
+            let binary = current_binary();
+            if binary.is_none() {
+                report.warnings.push(
+                    "chemin du binaire introuvable : les hooks git chercheront coutcouticket dans le PATH (échec possible depuis un client git graphique)".into(),
+                );
+            }
             for name in GIT_HOOKS {
                 let path = hooks.join(name);
-                let script = hook_script(name);
+                let script = hook_script(name, binary.as_deref());
                 if path.exists() {
                     let existing = fs::read_to_string(&path).unwrap_or_default();
                     if !existing.contains(HOOK_MARKER) {
@@ -234,4 +267,30 @@ fn upsert_claude_block(path: &Path, block: &str) -> Result<Upsert> {
         _ => bail!("CLAUDE.md contient un bloc coutcouticket incomplet (marqueur start/end manquant) : corriger à la main"),
     };
     if fsutil::write_if_changed(path, &new)? { Ok(Upsert::Updated) } else { Ok(Upsert::Unchanged) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+
+    #[test]
+    fn sh_quote_resiste_aux_apostrophes_et_espaces() {
+        for s in ["/opt/bin/coutcouticket", "/Users/l'ami/mon dossier/coutcouticket", "$HOME`x`"] {
+            let out = Command::new("sh").arg("-c").arg(format!("printf %s {}", sh_quote(s))).output().unwrap();
+            assert_eq!(String::from_utf8(out.stdout).unwrap(), s);
+        }
+    }
+
+    #[test]
+    fn hook_script_note_le_binaire_avec_repli_sur_le_path() {
+        let with = hook_script("pre-commit", Some("/opt/x/coutcouticket"));
+        assert!(with.contains(HOOK_MARKER));
+        assert!(with.contains("cct='/opt/x/coutcouticket'"), "{with}");
+        assert!(with.contains("command -v coutcouticket"), "{with}");
+        assert!(with.contains("exec \"$cct\" hook pre-commit"), "{with}");
+        let without = hook_script("prepare-commit-msg", None);
+        assert!(!without.contains("cct='"), "{without}");
+        assert!(without.contains("exec \"$cct\" hook prepare-commit-msg \"$@\""), "{without}");
+    }
 }

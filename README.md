@@ -48,8 +48,10 @@ Plugin Claude Code (skill `ticket` + hook de démarrage de session), dans Claude
 /plugin install coutcouticket@coutcouticket
 ```
 
-`~/.cargo/bin` doit être dans le `PATH` : les hooks git et le hook de session
-appellent `coutcouticket`.
+`~/.cargo/bin` doit être dans le `PATH` : le hook de session appelle `coutcouticket`.
+Les hooks git, eux, appellent le binaire par le chemin noté lors de `init` (avec repli
+sur le `PATH`) : ils fonctionnent aussi depuis un client git graphique. Après avoir
+déplacé le binaire, relancer `coutcouticket init` dans chaque projet.
 
 ## Dans chaque projet
 

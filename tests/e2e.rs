@@ -191,6 +191,73 @@ fn workflow_complet() {
 }
 
 // ---------------------------------------------------------------------------
+// Hooks git hors du terminal (client graphique : PATH de launchd)
+// ---------------------------------------------------------------------------
+
+const LAUNCHD_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
+
+impl Env {
+    /// Commande lancée comme par un client git graphique : environnement vide, PATH minimal.
+    fn gui(&self, args: &[&str]) -> Output {
+        Command::new("git")
+            .current_dir(&self.repo)
+            .env_clear()
+            .env("HOME", &self.home)
+            .env("PATH", LAUNCHD_PATH)
+            .env("COUTCOUTICKET_HOME", &self.home)
+            .args(args)
+            .output()
+            .unwrap()
+    }
+}
+
+#[test]
+fn hooks_hors_du_path() {
+    let env = Env::new();
+    env.ok(&["init"]);
+    let pre_commit = env.repo.join(".git/hooks/pre-commit");
+    assert!(fs::read_to_string(&pre_commit).unwrap().contains(BIN), "chemin du binaire absent du hook");
+
+    // --- ancien gabarit (recherche dans le PATH seule) mis à jour par init
+    let old = "#!/bin/sh\n# coutcouticket-hook (ancien)\nexec coutcouticket hook pre-commit\n";
+    fs::write(&pre_commit, old).unwrap();
+    let out = env.ok(&["init"]);
+    assert!(out.contains("mis à jour hook git pre-commit"), "{out}");
+    assert!(fs::read_to_string(&pre_commit).unwrap().contains(BIN));
+
+    // --- commit avec le PATH de launchd : accepté, trailer ajouté
+    env.ok(&["new", "-t", "Tester les hooks", "-k", "fix"]);
+    env.git_ok(&["add", "-A"]);
+    env.git_ok(&["commit", "-q", "-m", "init notes"]);
+    env.ok(&["start", "1"]);
+    let out = env.gui(&["commit", "-q", "--allow-empty", "-m", "depuis un client graphique"]);
+    assert!(out.status.success(), "commit refusé :\n{}", stderr(&out));
+    let msg = env.git_ok(&["log", "-1", "--pretty=%B"]);
+    assert!(msg.contains("Ticket: 0001"), "trailer absent : {msg}");
+
+    // --- binaire noté disparu : repli sur le PATH, puis message d'erreur
+    let moved = env.home.join("bin-temporaire");
+    fs::create_dir_all(&moved).unwrap();
+    let copy = moved.join("coutcouticket");
+    fs::copy(BIN, &copy).unwrap();
+    let out = env.cmd(copy.to_str().unwrap()).arg("init").output().unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(fs::read_to_string(&pre_commit).unwrap().contains(copy.to_str().unwrap()));
+    fs::remove_file(&copy).unwrap();
+    env.git_ok(&["commit", "-q", "--allow-empty", "-m", "repli sur le PATH"]);
+    let refused = env.gui(&["commit", "-q", "--allow-empty", "-m", "introuvable"]);
+    assert!(!refused.status.success(), "commit accepté sans binaire");
+    assert!(stderr(&refused).contains("coutcouticket introuvable"), "{}", stderr(&refused));
+
+    // --- hook tiers jamais modifié
+    let tiers = "#!/bin/sh\n# hook husky\nexit 0\n";
+    fs::write(&pre_commit, tiers).unwrap();
+    let out = env.ok(&["init"]);
+    assert!(out.contains("non géré par coutcouticket"), "{out}");
+    assert_eq!(fs::read_to_string(&pre_commit).unwrap(), tiers);
+}
+
+// ---------------------------------------------------------------------------
 // MCP stdio
 // ---------------------------------------------------------------------------
 
