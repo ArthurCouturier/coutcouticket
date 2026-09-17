@@ -2,7 +2,7 @@
 id: "0008"
 title: "Ignorer le dossier de notes dans git par défaut à l'init"
 type: feat
-status: todo
+status: in-progress
 priority: p2
 projects: [core]
 created: 2026-09-17

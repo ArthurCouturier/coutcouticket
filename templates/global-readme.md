@@ -43,6 +43,8 @@ documentation technique et la vue d'ensemble du projet.
 - Le hook `pre-commit` refuse un commit sur une branche non conforme.
 - Le hook `prepare-commit-msg` ajoute automatiquement le trailer `Ticket: 0013`.
 - Fichiers modifiés par un ticket : `coutcouticket files 13` (dérivé de git).
+- Le dossier `{{notes_dir}}/` est ignoré par git par défaut (`.gitignore`) : les notes
+  restent locales. Les trailers `Ticket:` portent sur les commits de code et restent actifs.
 
 ## Chercher efficacement
 

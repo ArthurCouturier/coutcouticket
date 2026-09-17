@@ -46,6 +46,9 @@ enum Cmd {
         /// Ne pas enregistrer le projet auprès du démon.
         #[arg(long)]
         no_register: bool,
+        /// Ne pas ajouter le dossier de notes au .gitignore.
+        #[arg(long)]
+        no_gitignore: bool,
     },
     /// Crée un ticket.
     New {
@@ -200,14 +203,19 @@ fn runtime() -> Result<tokio::runtime::Runtime> {
 fn run(cli: Cli) -> Result<()> {
     let p = &cli.project;
     match cli.command {
-        Cmd::Init { path, no_git_hooks, no_claude_md, no_register } => {
+        Cmd::Init { path, no_git_hooks, no_claude_md, no_register, no_gitignore } => {
             let target = match path.or_else(|| p.clone()) {
                 Some(t) => t,
                 None => std::env::current_dir()?,
             };
             let report = init::init(
                 &target,
-                init::InitOptions { git_hooks: !no_git_hooks, claude_md: !no_claude_md, register: !no_register },
+                init::InitOptions {
+                    git_hooks: !no_git_hooks,
+                    claude_md: !no_claude_md,
+                    register: !no_register,
+                    gitignore: !no_gitignore,
+                },
             )?;
             print!("{}", report.render());
         }

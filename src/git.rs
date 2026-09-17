@@ -65,6 +65,28 @@ pub fn hooks_dir(root: &Path) -> Result<PathBuf> {
     Ok(if path.is_absolute() { path } else { root.join(path) })
 }
 
+/// Vrai si au moins un fichier sous `rel` (relatif à `root`) est suivi par git.
+pub fn has_tracked_files(root: &Path, rel: &str) -> Result<bool> {
+    Ok(!git(root, &["ls-files", "--", rel])?.is_empty())
+}
+
+/// Vrai si git ignore ce chemin (.gitignore, exclude, config globale).
+pub fn is_ignored(root: &Path, path: &Path) -> Result<bool> {
+    let rel = path.strip_prefix(root).unwrap_or(path);
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["check-ignore", "--quiet", "--"])
+        .arg(rel)
+        .output()
+        .context("impossible de lancer git")?;
+    match out.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => bail!("git check-ignore a échoué : {}", String::from_utf8_lossy(&out.stderr).trim()),
+    }
+}
+
 pub fn add(root: &Path, path: &Path) -> Result<()> {
     let rel = path.strip_prefix(root).unwrap_or(path);
     git(root, &["add", "--", &rel.to_string_lossy()])?;

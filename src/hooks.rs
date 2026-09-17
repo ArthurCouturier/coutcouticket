@@ -48,8 +48,13 @@ pub fn pre_commit() -> Result<()> {
         }
     }
     if project.regenerate_board()? {
-        git::add(&project.root, &project.board_path())?;
-        eprintln!("coutcouticket : BOARD.md régénéré et ajouté au commit");
+        // Notes hors dépôt (.gitignore) : git add échouerait et bloquerait le commit.
+        if git::is_ignored(&project.root, &project.board_path())? {
+            eprintln!("coutcouticket : BOARD.md régénéré (notes ignorées par git, non ajouté au commit)");
+        } else {
+            git::add(&project.root, &project.board_path())?;
+            eprintln!("coutcouticket : BOARD.md régénéré et ajouté au commit");
+        }
     }
     let problems = project.validate()?;
     if !problems.is_empty() {

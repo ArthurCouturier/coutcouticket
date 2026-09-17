@@ -22,11 +22,12 @@ pub struct InitOptions {
     pub git_hooks: bool,
     pub claude_md: bool,
     pub register: bool,
+    pub gitignore: bool,
 }
 
 impl Default for InitOptions {
     fn default() -> Self {
-        InitOptions { git_hooks: true, claude_md: true, register: true }
+        InitOptions { git_hooks: true, claude_md: true, register: true, gitignore: true }
     }
 }
 
@@ -225,7 +226,39 @@ pub fn init(path: &Path, opts: InitOptions) -> Result<InitReport> {
         }
     }
 
-    // 8. Registre (pour le démon)
+    // 8. .gitignore : notes hors dépôt, sauf si elles sont déjà versionnées
+    if opts.gitignore {
+        let notes = notes_dir_rule(&project.cfg.notes_dir);
+        let tracked = git::is_repo(&root) && git::has_tracked_files(&root, &notes)?;
+        let path = root.join(".gitignore");
+        let existing = fs::read(&path).ok();
+        let already = existing
+            .as_deref()
+            .is_some_and(|bytes| ignores_dir(&String::from_utf8_lossy(bytes), &notes));
+        if tracked {
+            if !already {
+                report.warnings.push(format!(
+                    "{notes}/ contient des fichiers suivis par git : .gitignore non modifié, les notes restent versionnées. \
+                     Pour les sortir du dépôt : ajouter « /{notes}/ » à .gitignore puis lancer « git rm -r --cached {notes} »"
+                ));
+            }
+        } else if !already {
+            let rule = format!("/{notes}/\n");
+            match existing {
+                None => {
+                    fsutil::write_atomic(&path, &rule)?;
+                    report.created.push(format!(".gitignore (/{notes}/)"));
+                }
+                Some(bytes) => {
+                    let sep = if bytes.is_empty() || bytes.ends_with(b"\n") { "" } else { "\n" };
+                    fsutil::append(&path, &format!("{sep}{rule}"))?;
+                    report.updated.push(format!(".gitignore (/{notes}/)"));
+                }
+            }
+        }
+    }
+
+    // 9. Registre (pour le démon)
     if opts.register {
         match Registry::load().and_then(|mut r| {
             let added = r.add(&root)?;
@@ -241,6 +274,26 @@ pub fn init(path: &Path, opts: InitOptions) -> Result<InitReport> {
     }
 
     Ok(report)
+}
+
+/// `notes_dir` normalisé pour git : sans `./` ni barres obliques en tête ou en fin.
+fn notes_dir_rule(notes_dir: &str) -> String {
+    let d = notes_dir.trim();
+    let d = d.strip_prefix("./").unwrap_or(d);
+    d.trim_matches('/').to_owned()
+}
+
+/// Vrai si une ligne du .gitignore ignore déjà tout le dossier `dir`.
+fn ignores_dir(gitignore: &str, dir: &str) -> bool {
+    let equivalents = [
+        dir.to_owned(),
+        format!("{dir}/"),
+        format!("{dir}/**"),
+        format!("/{dir}"),
+        format!("/{dir}/"),
+        format!("/{dir}/**"),
+    ];
+    gitignore.lines().map(str::trim).any(|l| equivalents.iter().any(|e| e == l))
 }
 
 enum Upsert {
@@ -279,6 +332,23 @@ mod tests {
         for s in ["/opt/bin/coutcouticket", "/Users/l'ami/mon dossier/coutcouticket", "$HOME`x`"] {
             let out = Command::new("sh").arg("-c").arg(format!("printf %s {}", sh_quote(s))).output().unwrap();
             assert_eq!(String::from_utf8(out.stdout).unwrap(), s);
+        }
+    }
+
+    #[test]
+    fn notes_dir_normalise() {
+        assert_eq!(notes_dir_rule("0-notes"), "0-notes");
+        assert_eq!(notes_dir_rule("./docs/notes/"), "docs/notes");
+        assert_eq!(notes_dir_rule("/0-notes"), "0-notes");
+    }
+
+    #[test]
+    fn regles_equivalentes_reconnues() {
+        for rule in ["0-notes", "0-notes/", "0-notes/**", "/0-notes", "/0-notes/", "  /0-notes/  "] {
+            assert!(ignores_dir(&format!("target\n{rule}\n"), "0-notes"), "{rule}");
+        }
+        for rule in ["!0-notes/", "# /0-notes/", "0-notes/tickets/", "10-notes/", "*.md"] {
+            assert!(!ignores_dir(&format!("{rule}\n"), "0-notes"), "{rule}");
         }
     }
 

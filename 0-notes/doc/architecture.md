@@ -40,6 +40,11 @@ appellent le cœur, rien de plus.
 - **Suffixe de branche = nom de dossier**, sans conversion.
 - **`init` ne réécrit jamais un contenu utilisateur** : `create_if_missing` partout,
   sauf le bloc balisé de `CLAUDE.md` et les hooks portant le marqueur coutcouticket.
+  Le `.gitignore` n'est modifié que par ajout en fin de fichier.
+- **Notes versionnées ou non : jamais changé à l'insu de l'utilisateur.** `init` ajoute
+  `/<notes_dir>/` au `.gitignore` (option `--no-gitignore`) sauf si une règle équivalente
+  existe (`ignores_dir`) ou si des fichiers de notes sont déjà suivis (`git::has_tracked_files`) :
+  dans ce cas, avertissement seulement.
 
 ## Démon
 
@@ -67,10 +72,13 @@ appellent le cœur, rien de plus.
   (`current_exe`, non canonicalisé), avec repli sur le PATH. Piège : un client git
   graphique hérite du PATH de launchd (`/usr/bin:/bin:/usr/sbin:/sbin`), sans
   `~/.cargo/bin` ni `/opt/homebrew/bin`. Binaire déplacé hors du PATH → relancer `init`.
+- `pre-commit` régénère `BOARD.md` et ne l'ajoute au commit que s'il n'est pas ignoré
+  (`git::is_ignored`) : `git add` d'un chemin ignoré échoue et bloquerait le commit.
 
 ## Tests
 
 - Unitaires dans chaque module (`cargo test`).
 - `tests/e2e.rs` : binaire réel dans un dépôt git temporaire, avec
   `COUTCOUTICKET_HOME` isolé. Couvre le workflow et les hooks, le MCP stdio, et le
-  démon HTTP (authentification, Origin, watcher sous lecture continue).
+  démon HTTP (authentification, Origin, watcher sous lecture continue), les hooks
+  avec le PATH de launchd et le .gitignore des notes.

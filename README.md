@@ -70,7 +70,15 @@ sans jamais écraser de contenu.
 - les fichiers `journal.md` / `decisions.md` manquants des tickets existants
 - le bloc coutcouticket dans `CLAUDE.md`
 - les hooks git `pre-commit` et `prepare-commit-msg`
+- la ligne `/0-notes/` dans `.gitignore` : les notes restent hors dépôt
 - l'enregistrement du projet auprès du démon
+
+Options : `--no-git-hooks`, `--no-claude-md`, `--no-register`, `--no-gitignore`.
+
+Notes hors dépôt : pas de partage par git ni de visibilité dans les PR ; `BOARD.md`
+est régénéré par `pre-commit` sans être ajouté au commit. Si des fichiers de
+`0-notes/` sont déjà suivis par git, `init` ne touche pas au `.gitignore` et indique
+comment sortir les notes du dépôt (`git rm -r --cached 0-notes`).
 
 ## Conventions
 

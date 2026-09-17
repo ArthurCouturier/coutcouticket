@@ -423,3 +423,71 @@ fn daemon_http_auth_et_watcher() {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// .gitignore du dossier de notes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gitignore_des_notes() {
+    // --- sans .gitignore : créé, notes invisibles pour git, idempotent
+    let env = Env::new();
+    let gitignore = env.repo.join(".gitignore");
+    env.ok(&["init"]);
+    assert_eq!(fs::read_to_string(&gitignore).unwrap(), "/0-notes/\n");
+    let status = env.git_ok(&["status", "--porcelain", "--untracked-files=all"]);
+    assert!(!status.contains("0-notes"), "{status}");
+    let again = env.ok(&["init"]);
+    assert!(again.contains("déjà complète"), "{again}");
+    assert_eq!(fs::read_to_string(&gitignore).unwrap(), "/0-notes/\n");
+
+    // --- commit avec notes ignorées : BOARD.md régénéré sans git add
+    env.git_ok(&["add", "-A"]);
+    env.git_ok(&["commit", "-q", "-m", "init"]);
+    env.ok(&["new", "-t", "Premier ticket"]);
+    fs::write(env.notes().join("0-global/BOARD.md"), "périmé").unwrap();
+    let out = env.git(&["commit", "-q", "--allow-empty", "-m", "board ignoré"]);
+    assert!(out.status.success(), "commit refusé :\n{}", stderr(&out));
+    assert!(stderr(&out).contains("non ajouté au commit"), "{}", stderr(&out));
+    assert!(env.git_ok(&["ls-files", "0-notes"]).is_empty());
+
+    // --- .gitignore existant sans fin de ligne : seule la règle est ajoutée
+    let env = Env::new();
+    let gitignore = env.repo.join(".gitignore");
+    let original = "# Dépendances\nnode_modules/\ndist";
+    fs::write(&gitignore, original).unwrap();
+    let out = env.ok(&["init"]);
+    assert!(out.contains("mis à jour .gitignore"), "{out}");
+    assert_eq!(fs::read_to_string(&gitignore).unwrap(), format!("{original}\n/0-notes/\n"));
+
+    // --- règle équivalente déjà présente : rien n'est ajouté
+    let env = Env::new();
+    let gitignore = env.repo.join(".gitignore");
+    fs::write(&gitignore, "0-notes/\n").unwrap();
+    env.ok(&["init"]);
+    assert_eq!(fs::read_to_string(&gitignore).unwrap(), "0-notes/\n");
+
+    // --- --no-gitignore
+    let env = Env::new();
+    env.ok(&["init", "--no-gitignore"]);
+    assert!(!env.repo.join(".gitignore").exists());
+
+    // --- notes déjà versionnées : .gitignore intact, avertissement, index intact
+    env.git_ok(&["add", "-A"]);
+    env.git_ok(&["commit", "-q", "-m", "notes versionnées"]);
+    let tracked = env.git_ok(&["ls-files", "0-notes"]);
+    assert!(!tracked.is_empty());
+    let out = env.ok(&["init"]);
+    assert!(out.contains("git rm -r --cached 0-notes"), "{out}");
+    assert!(!env.repo.join(".gitignore").exists());
+    assert_eq!(env.git_ok(&["ls-files", "0-notes"]), tracked);
+
+    // --- notes_dir personnalisé
+    let env = Env::new();
+    fs::write(env.repo.join(".coutcouticket.toml"), "notes_dir = \"docs/notes\"\n").unwrap();
+    env.ok(&["init"]);
+    assert_eq!(fs::read_to_string(env.repo.join(".gitignore")).unwrap(), "/docs/notes/\n");
+    let status = env.git_ok(&["status", "--porcelain", "--untracked-files=all"]);
+    assert!(!status.contains("docs/notes"), "{status}");
+    assert!(env.repo.join("docs/notes/0-global/BOARD.md").is_file());
+}
