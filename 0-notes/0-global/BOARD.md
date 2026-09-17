@@ -1,7 +1,7 @@
 <!-- GÉNÉRÉ par coutcouticket — ne pas éditer. Régénérer : coutcouticket board -->
 # Tableau des tickets — coutcouticket
 
-**5 ouvert(s)** sur 9 · 0 en cours · 0 en revue · 0 bloqué · 5 à faire · 4 terminé · 0 annulé
+**13 ouvert(s)** sur 17 · 0 en cours · 0 en revue · 0 bloqué · 13 à faire · 4 terminé · 0 annulé
 
 ## En cours (0)
 
@@ -15,7 +15,7 @@ _Aucun ticket._
 
 _Aucun ticket._
 
-## À faire (5)
+## À faire (13)
 
 | ID | Titre | Type | Prio | Projets | MAJ |
 |----|-------|------|------|---------|-----|
@@ -24,6 +24,14 @@ _Aucun ticket._
 | [0007](../tickets/0007-rendre-setup-claude-apply-idempotent/ticket.md) | Rendre setup-claude --apply idempotent | fix | p2 | core | 2026-09-17 |
 | [0004](../tickets/0004-dependances-entre-tickets-blocked-by/ticket.md) | Dépendances entre tickets (blocked_by) | feat | p3 | core, mcp | 2026-09-17 |
 | [0005](../tickets/0005-subagent-relecteur-de-cloture/ticket.md) | Subagent relecteur de clôture | feat | p3 | plugin | 2026-09-17 |
+| [0010](../tickets/0010-a-valider-commande-doctor-de-diagnostic-complet/ticket.md) | À valider : commande doctor de diagnostic complet | feat | p3 | core | 2026-09-17 |
+| [0011](../tickets/0011-a-valider-vue-des-tickets-de-tous-les-projets/ticket.md) | À valider : vue des tickets de tous les projets | feat | p3 | core, mcp, daemon | 2026-09-17 |
+| [0012](../tickets/0012-a-valider-sauvegarde-des-notes-hors-depot/ticket.md) | À valider : sauvegarde des notes hors dépôt | feat | p3 | core, daemon | 2026-09-17 |
+| [0013](../tickets/0013-a-valider-demarrer-un-ticket-dans-un-worktree-git/ticket.md) | À valider : démarrer un ticket dans un worktree git | feat | p3 | core, mcp, plugin | 2026-09-17 |
+| [0014](../tickets/0014-a-valider-recherche-plein-texte-dans-les-notes/ticket.md) | À valider : recherche plein texte dans les notes | feat | p3 | core, mcp | 2026-09-17 |
+| [0015](../tickets/0015-a-valider-changelog-genere-depuis-les-tickets-clos/ticket.md) | À valider : changelog généré depuis les tickets clos | feat | p3 | core | 2026-09-17 |
+| [0016](../tickets/0016-a-valider-proposer-la-cloture-apres-fusion-de-la/ticket.md) | À valider : proposer la clôture après fusion de la branche | feat | p3 | core, plugin | 2026-09-17 |
+| [0017](../tickets/0017-a-valider-demon-sous-linux-avec-systemd/ticket.md) | À valider : démon sous Linux avec systemd | feat | p3 | daemon | 2026-09-17 |
 
 ## Terminé (4)
 
@@ -42,7 +50,7 @@ _Aucun ticket._
 
 | Projet | En cours | En revue | Bloqué | À faire | Terminé | Annulé |
 |--------|---|---|---|---|---|---|
-| core | 0 | 0 | 0 | 3 | 3 | 0 |
-| daemon | 0 | 0 | 0 | 1 | 2 | 0 |
-| mcp | 0 | 0 | 0 | 1 | 1 | 0 |
-| plugin | 0 | 0 | 0 | 1 | 2 | 0 |
+| core | 0 | 0 | 0 | 10 | 3 | 0 |
+| daemon | 0 | 0 | 0 | 4 | 2 | 0 |
+| mcp | 0 | 0 | 0 | 4 | 1 | 0 |
+| plugin | 0 | 0 | 0 | 3 | 2 | 0 |
