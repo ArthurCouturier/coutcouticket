@@ -56,13 +56,26 @@ appellent le cœur, rien de plus.
 - Sécurité : écoute sur 127.0.0.1, `allowed_hosts` restreint, jeton Bearer comparé
   en temps constant, toute requête portant un en-tête `Origin` refusée (403).
 - En mode démon, le paramètre `project` est obligatoire et doit être enregistré.
+- Ordre de démarrage de `run` : config du démon, **bind du port en premier**, puis
+  construction du routeur, puis lancement du watcher dans son thread. Les connexions
+  arrivées avant `axum::serve` attendent dans la file du noyau au lieu d'être refusées.
+  Ne rien insérer de lent (registre, FSEvents, régénération des boards) avant le bind.
 - Watcher (thread dédié, `notify`) : surveille le dossier de config globale (registre)
   et le dossier de notes de chaque projet enregistré.
-- macOS : LaunchAgent `app.coutcouticket.daemon` (`RunAtLoad`, `KeepAlive`),
-  journal dans `~/Library/Logs/coutcouticket/daemon.log`. Piège : avec
-  `ProcessType=Background`, `Nice` et `LowPriorityIO`, le démon a mis environ 1 min
-  à écouter après l'ouverture de session. Une session Claude Code ouverte dans ce
-  délai n'a pas le MCP (connexion refusée, `/mcp` pour reconnecter).
+- Journal (`daemon.log`) : chaque ligne commence par un horodatage à la milliseconde
+  (macro `log!` de `daemon.rs`). Lignes clés : « lancement du démon … processus lancé
+  il y a N ms » (délai exec → `run`, via `proc_pidinfo`, macOS uniquement),
+  « à l'écoute … », « surveillance prête (n projet(s), N ms …) ».
+- macOS : LaunchAgent `app.coutcouticket.daemon` (`RunAtLoad`, `KeepAlive`,
+  `ProcessType=Interactive`, sans `Nice` ni `LowPriorityIO`), journal dans
+  `~/Library/Logs/coutcouticket/daemon.log`. Piège : avec `ProcessType=Background`,
+  `Nice` et `LowPriorityIO` (ancien plist), le port n'écoutait qu'environ 1 min après
+  l'ouverture de session et la première session Claude Code n'avait pas le MCP
+  (connexion refusée, `/mcp` pour reconnecter). L'ancien code écoutait déjà avant
+  l'initialisation du watcher : le bridage launchd pendant la charge de connexion est
+  la cause retenue. Ne pas le réintroduire : le démon est événementiel et ne consomme
+  rien au repos, le bridage ne fait que retarder le démarrage. Le plist installé n'est
+  réécrit que par `daemon install` (à relancer après toute modification du gabarit).
 
 ### Enregistrement dans Claude Code (`claude.rs`)
 
@@ -102,6 +115,7 @@ appellent le cœur, rien de plus.
 - Unitaires dans chaque module (`cargo test`).
 - `tests/e2e.rs` : binaire réel dans un dépôt git temporaire, avec
   `COUTCOUTICKET_HOME` isolé. Couvre le workflow et les hooks, le MCP stdio, et le
-  démon HTTP (authentification, Origin, watcher sous lecture continue), les hooks
-  avec le PATH de launchd, le .gitignore des notes, et `setup-claude --apply` avec un
-  faux `claude` (script shell : absent, identique, différent, autre portée, échec).
+  démon HTTP (authentification, Origin, watcher sous lecture continue, écoute avant
+  le watcher et journal horodaté), les hooks avec le PATH de launchd, le .gitignore
+  des notes, et `setup-claude --apply` avec un faux `claude` (script shell : absent,
+  identique, différent, autre portée, échec).

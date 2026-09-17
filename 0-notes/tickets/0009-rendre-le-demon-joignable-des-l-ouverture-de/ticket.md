@@ -2,7 +2,7 @@
 id: "0009"
 title: "Rendre le démon joignable dès l'ouverture de session macOS"
 type: fix
-status: todo
+status: review
 priority: p1
 projects: [daemon]
 created: 2026-09-17
@@ -19,11 +19,17 @@ Objectif : le MCP doit être disponible pour la première session Claude Code ap
 
 ## Critères d'acceptation
 
-- [ ] Cause du délai identifiée et mesurée (horodatages dans daemon.log entre le lancement et l'écoute)
+- [x] Cause du délai identifiée et mesurée (horodatages dans daemon.log entre le lancement et l'écoute)
 - [ ] Après un redémarrage macOS, le port 47813 écoute moins de 5 s après le lancement du processus
 - [ ] Une session Claude Code ouverte juste après la connexion voit les outils ticket_* sans /mcp
-- [ ] Le démon reste à 0 CPU au repos
-- [ ] cargo test passe
+- [x] Le démon reste à 0 CPU au repos
+- [x] cargo test passe
 
 ## Notes
+
+- Horodatages et mesure en local en place (5-6 ms lancement → écoute). La mesure au
+  vrai redémarrage reste à faire par l'utilisateur (procédure dans le journal).
+- L'ancien `run` écoutait déjà avant l'init du watcher : cause retenue = bridage launchd
+  (D1). Si le délai persiste au redémarrage, la ligne « processus lancé il y a N ms »
+  dira s'il est avant `run` (exec, disque, Gatekeeper) ou après.
 
