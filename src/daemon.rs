@@ -29,6 +29,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::{Config, DaemonConfig, Registry};
 use crate::mcp::{Mode, TicketServer};
+use crate::overview;
 use crate::store::Project;
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -194,6 +195,10 @@ fn spawn_watcher(started: Instant) -> Result<mpsc::Sender<()>> {
     let registry_path = Registry::path()?;
     let global_dir = registry_path.parent().unwrap().to_path_buf();
     std::fs::create_dir_all(&global_dir)?;
+    // Les événements portent des chemins canoniques (FSEvents : /tmp → /private/tmp) :
+    // sans cela, un dossier de config derrière un lien symbolique masque les changements du registre.
+    let global_dir = global_dir.canonicalize().unwrap_or(global_dir);
+    let registry_path = global_dir.join(registry_path.file_name().unwrap());
 
     std::thread::Builder::new().name("coutcouticket-watcher".into()).spawn(move || {
         let mut watcher = match notify::recommended_watcher(ev_tx) {
@@ -211,6 +216,7 @@ fn spawn_watcher(started: Instant) -> Result<mpsc::Sender<()>> {
         for (root, _) in &watched.projects {
             regenerate(root);
         }
+        regenerate_overview();
         log!(
             "surveillance prête ({} projet(s), {} ms après le début de run)",
             watched.projects.len(),
@@ -280,8 +286,12 @@ fn spawn_watcher(started: Instant) -> Result<mpsc::Sender<()>> {
                     dirty.insert(root.clone());
                 }
             }
+            let overview_dirty = registry_changed || !dirty.is_empty();
             for root in dirty {
                 regenerate(&root);
+            }
+            if overview_dirty {
+                regenerate_overview();
             }
         }
     })?;
@@ -331,6 +341,16 @@ fn regenerate(root: &Path) {
         Ok(true) => log!("BOARD.md régénéré pour {}", root.display()),
         Ok(false) => {}
         Err(e) => log!("échec de régénération pour {} : {e:#}", root.display()),
+    }
+}
+
+/// `OVERVIEW.md` du dossier de config globale : tous les projets du registre,
+/// y compris ceux devenus introuvables (signalés dans le fichier).
+fn regenerate_overview() {
+    match Registry::load().and_then(|r| overview::regenerate_file(&r.projects)) {
+        Ok(true) => log!("{} régénéré", overview::OVERVIEW_FILE),
+        Ok(false) => {}
+        Err(e) => log!("échec de régénération de {} : {e:#}", overview::OVERVIEW_FILE),
     }
 }
 

@@ -12,7 +12,7 @@ conçu pour travailler avec Claude Code sans friction.
 
 ```
 coutcouticket (binaire unique, ~5 Mo)
-├── CLI           init, new, start, status, depend, log, decide, list, show, files, board, validate
+├── CLI           init, new, start, status, depend, log, decide, list, overview, show, files, board, validate
 ├── mcp           serveur MCP stdio (secours)
 ├── daemon run    serveur MCP HTTP 127.0.0.1 + surveillance des notes (LaunchAgent)
 └── hook          pre-commit, prepare-commit-msg, session-start
@@ -149,6 +149,24 @@ Dépendances : un ticket ouvert affiche dans `BOARD.md` (colonne « Bloqué par 
 dépendances encore ouvertes ; une dépendance `done` ou `cancelled` ne bloque plus.
 `list`, `show` et `ticket_context` exposent `blocked_by` et `open_blockers`.
 
+## Vue de tous les projets
+
+```sh
+coutcouticket overview                          # tickets ouverts de tous les projets enregistrés
+coutcouticket overview --status todo --priority p1
+coutcouticket overview --json
+```
+
+Tickets ouverts triés par statut (en cours, en revue, bloqué, puis à faire), priorité,
+projet et id, avec le nom du projet et les dépendances encore ouvertes. Un projet
+enregistré mais introuvable, ou dont les notes sont invalides, est signalé en fin de
+liste (avec la correction) sans faire échouer la vue. Même contenu en MCP :
+`tickets_overview`, sans paramètre `project`.
+
+Le démon tient aussi à jour `~/.config/coutcouticket/OVERVIEW.md` (régénéré à chaque
+changement de notes ou du registre, réécrit seulement si son contenu change). Démon
+arrêté, le fichier peut être en retard : `overview` reste la vue en direct.
+
 ## Outils MCP
 
 | Outil | Rôle |
@@ -160,6 +178,7 @@ dépendances encore ouvertes ; une dépendance `done` ou `cancelled` ne bloque p
 | `ticket_log` | entrée d'avancement, « prochaine étape » obligatoire |
 | `ticket_decide` | décision structurée |
 | `ticket_list` | liste filtrable |
+| `tickets_overview` | tickets ouverts de tous les projets enregistrés, sans `project` (filtres statut, priorité) |
 | `ticket_context` | point d'entrée de reprise |
 | `ticket_files` | fichiers modifiés, dérivés de git (sans les notes des autres tickets ni `BOARD.md`) |
 | `notes_validate` | vérification complète |
@@ -183,7 +202,7 @@ Autre binaire git : `COUTCOUTICKET_GIT_BIN`.
 Secours sans démon : `claude mcp add --scope user coutcouticket-stdio -- coutcouticket mcp`.
 
 Configuration globale : `~/.config/coutcouticket/` (`projects.toml`, `daemon.toml` avec
-le port et le jeton, en 0600).
+le port et le jeton, en 0600, et `OVERVIEW.md` généré par le démon).
 
 ## Développement
 

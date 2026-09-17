@@ -9,6 +9,7 @@ mod init;
 mod mcp;
 mod model;
 mod naming;
+mod overview;
 mod store;
 mod templates;
 
@@ -117,6 +118,17 @@ enum Cmd {
         /// Filtre par projet de dev.
         #[arg(long = "dev-project")]
         dev_project: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Tickets ouverts de tous les projets enregistrés, triés par statut puis priorité.
+    Overview {
+        /// Filtre par statut ouvert (in-progress, review, blocked, todo).
+        #[arg(long, short)]
+        status: Option<String>,
+        /// Filtre par priorité (p0 … p3).
+        #[arg(long, short)]
+        priority: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -295,6 +307,18 @@ fn run(cli: Cli) -> Result<()> {
                     let blockers = if t.open_blockers.is_empty() { String::new() } else { format!("  (bloqué par {})", t.open_blockers.join(", ")) };
                     println!("{}  {:<11} {} {:<7} {}{}{}", t.id, t.status.as_str(), t.priority, t.kind, t.title, projects, blockers);
                 }
+            }
+        }
+        Cmd::Overview { status, priority, json } => {
+            let filter = overview::Filter {
+                status: status.map(|s| s.parse::<Status>()).transpose()?,
+                priority: priority.map(|x| x.parse::<Priority>()).transpose()?,
+            };
+            let view = overview::build(&Registry::load()?.projects, filter)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&view)?);
+            } else {
+                print!("{}", overview::render_text(&view));
             }
         }
         Cmd::Show { id, json } => {

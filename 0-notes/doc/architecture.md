@@ -23,6 +23,7 @@ appellent le cœur, rien de plus.
 | `naming.rs` | slug, nom de dossier, nom et classification de branche |
 | `config.rs` | `.coutcouticket.toml`, registre des projets, configuration du démon |
 | `board.rs` | rendu déterministe de `BOARD.md` |
+| `overview.rs` | vue des tickets ouverts de tous les projets du registre (`overview`, `tickets_overview`, `OVERVIEW.md`) |
 | `init.rs` | création et réparation idempotentes de l'arborescence, bloc CLAUDE.md, hooks git |
 | `git.rs` | appels au binaire git |
 | `claude.rs` | `setup-claude` : lecture de `claude mcp get`, ajout ou remplacement idempotent |
@@ -75,18 +76,42 @@ appellent le cœur, rien de plus.
 - `start` n'est pas refusé sur un ticket bloqué : la CLI avertit, le hook
   SessionStart signale les dépendances ouvertes du ticket de la branche courante.
 
+## Vue de tous les projets (`overview.rs`)
+
+- `overview::build(roots, filter)` : pour chaque racine du registre (`Registry::load().projects`),
+  `Project::open` puis `scan`, et garde les tickets ouverts (`TicketSummary` complet, donc
+  `open_blockers`) avec `project` (nom du dossier racine) et `project_path` (racine absolue,
+  à passer aux outils `ticket_*`). Lecture seule, sans verrou.
+- Tri : rang du statut dans `Status::ALL` (en cours, en revue, bloqué, à faire), priorité,
+  nom du projet, chemin, id. Filtres optionnels statut et priorité ; un statut fermé est
+  refusé (la vue ne montre que l'ouvert).
+- **Un projet illisible ne fait jamais échouer la vue** : `.coutcouticket.toml` absent
+  (introuvable), config invalide, `tickets/` absent ou erreur de lecture → une entrée dans
+  `warnings` avec la correction. Des problèmes de scan (tickets invalides) ajoutent un
+  avertissement qui renvoie vers `validate`, et les tickets valides restent affichés.
+- Façades : CLI `overview [--status] [--priority] [--json]` (`render_text`), MCP
+  `tickets_overview` (sans `project`, y compris en mode démon, qui ne vérifie alors aucun
+  enregistrement : la vue ne lit que le registre).
+- `OVERVIEW.md` dans le dossier de config globale : écrit par le démon uniquement
+  (`regenerate_file`, `write_if_changed`), au démarrage du watcher puis après chaque lot
+  où un projet ou le registre a changé. Rendu déterministe (`render_markdown`, aucun
+  horodatage), liens absolus entre chevrons vers les `ticket.md`. Ses écritures dans le
+  dossier global ne relancent rien (seul `projects.toml` y est suivi).
+
 ## Démon
 
 - Streamable HTTP via rmcp, monté sur `/mcp` ; `/health` sans authentification.
 - Sécurité : écoute sur 127.0.0.1, `allowed_hosts` restreint, jeton Bearer comparé
   en temps constant, toute requête portant un en-tête `Origin` refusée (403).
-- En mode démon, le paramètre `project` est obligatoire et doit être enregistré.
+- En mode démon, le paramètre `project` est obligatoire et doit être enregistré
+  (sauf `tickets_overview`, qui n'en a pas).
 - Ordre de démarrage de `run` : config du démon, **bind du port en premier**, puis
   construction du routeur, puis lancement du watcher dans son thread. Les connexions
   arrivées avant `axum::serve` attendent dans la file du noyau au lieu d'être refusées.
   Ne rien insérer de lent (registre, FSEvents, régénération des boards) avant le bind.
 - Watcher (thread dédié, `notify`) : surveille le dossier de config globale (registre)
-  et le dossier de notes de chaque projet enregistré.
+  et le dossier de notes de chaque projet enregistré. Il régénère les `BOARD.md` touchés
+  et `OVERVIEW.md`.
 - Journal (`daemon.log`) : chaque ligne commence par un horodatage à la milliseconde
   (macro `log!` de `daemon.rs`). Lignes clés : « lancement du démon … processus lancé
   il y a N ms » (délai exec → `run`, via `proc_pidinfo`, macOS uniquement),
@@ -122,6 +147,10 @@ appellent le cœur, rien de plus.
 - L'anti-rebond n'est prolongé que par des écritures et plafonné à 2 s : un
   lecteur continu ne doit pas pouvoir bloquer la régénération.
 - Ignorer `BOARD.md` et les fichiers cachés (fichiers temporaires d'écriture atomique).
+- Les événements portent des chemins canoniques (FSEvents : `/tmp` → `/private/tmp`).
+  Le dossier de config globale est donc canonicalisé avant de comparer à `projects.toml` ;
+  sinon un `HOME` ou `COUTCOUTICKET_HOME` derrière un lien symbolique masque les
+  changements du registre. Les racines du registre sont déjà canoniques (`Registry::add`).
 
 ## Appels git (`git.rs`)
 
@@ -199,11 +228,15 @@ convention de dossier, sans déclaration dans le manifeste :
 
 - Unitaires dans chaque module (`cargo test`).
 - `store.rs` : tests du cœur sur un projet temporaire sans git (dépendances, cycles, board).
+- `overview.rs` : plusieurs projets temporaires (dont un introuvable, un à config invalide,
+  un avec ticket invalide) : tri, filtres, avertissements, rendu texte et Markdown déterministe.
 - `tests/e2e.rs` : binaire réel dans un dépôt git temporaire, avec
   `COUTCOUTICKET_HOME` isolé. Couvre le workflow et les hooks, les trailers des commits de notes et `files`,
   les dépendances (CLI),
-  le MCP stdio, et le démon HTTP (authentification, Origin, watcher sous lecture
-  continue, écoute avant le watcher et journal horodaté), les hooks avec le PATH de
+  la vue `overview` sur trois projets enregistrés dont un supprimé (texte, JSON, filtres,
+  `tickets_overview` en stdio), le MCP stdio, et le démon HTTP (authentification, Origin,
+  watcher sous lecture continue, `tickets_overview` sans `project`, `OVERVIEW.md` suivant
+  les notes et le registre, écoute avant le watcher et journal horodaté), les hooks avec le PATH de
   launchd, le .gitignore des notes, et `setup-claude --apply` avec un faux `claude`
   (script shell : absent, identique, différent, autre portée, échec), et git en échec
   avec un faux git (`COUTCOUTICKET_GIT_BIN` : licence Xcode en code 69, panne en 128,
