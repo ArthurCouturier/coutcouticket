@@ -155,6 +155,22 @@ appellent le cœur, rien de plus.
   `~/.cargo/bin` ni `/opt/homebrew/bin`. Binaire déplacé hors du PATH → relancer `init`.
 - `pre-commit` régénère `BOARD.md` et ne l'ajoute au commit que s'il n'est pas ignoré
   (`git::is_ignored`) : `git add` d'un chemin ignoré échoue et bloquerait le commit.
+- `prepare-commit-msg` (sauf merge) choisit les trailers `Ticket:` d'après les fichiers
+  indexés (`git::staged_files`, qui respecte le `GIT_INDEX_FILE` de `commit -a`) via
+  `Project::commit_tickets` : si le commit ne touche que des notes, dont au moins un
+  dossier de ticket et pas celui du ticket de la branche, il reçoit les trailers des
+  tickets touchés ; sinon (code, dossier du ticket de la branche, doc ou `BOARD.md`
+  seuls, index vide) celui de la branche. Un message qui porte déjà un trailer
+  `Ticket:` n'est pas modifié (`git::add_trailers`). Notes ignorées par git : jamais
+  indexées, donc toujours le trailer de la branche.
+- Rattachement d'un chemin : `Project::path_owner` → `Code`, `Ticket(id)` (dossier
+  `tickets/<id>-<slug>/`, reconnu par `naming::parse_dir_name`), `Board` ou `Notes`.
+  Piège : git donne des chemins relatifs à la racine du dépôt, pas du projet ; le
+  préfixe du projet (`git::show_prefix`) est retiré d'abord.
+- `files <id>` (`Project::files`) : fichiers des commits portant le trailer, plus les
+  changements non commités sur la branche du ticket, sans les dossiers des autres
+  tickets ni `BOARD.md`. Le filtre corrige aussi les commits mal attribués avant ce
+  comportement.
 
 ## Plugin Claude Code
 
@@ -184,7 +200,8 @@ convention de dossier, sans déclaration dans le manifeste :
 - Unitaires dans chaque module (`cargo test`).
 - `store.rs` : tests du cœur sur un projet temporaire sans git (dépendances, cycles, board).
 - `tests/e2e.rs` : binaire réel dans un dépôt git temporaire, avec
-  `COUTCOUTICKET_HOME` isolé. Couvre le workflow et les hooks, les dépendances (CLI),
+  `COUTCOUTICKET_HOME` isolé. Couvre le workflow et les hooks, les trailers des commits de notes et `files`,
+  les dépendances (CLI),
   le MCP stdio, et le démon HTTP (authentification, Origin, watcher sous lecture
   continue, écoute avant le watcher et journal horodaté), les hooks avec le PATH de
   launchd, le .gitignore des notes, et `setup-claude --apply` avec un faux `claude`

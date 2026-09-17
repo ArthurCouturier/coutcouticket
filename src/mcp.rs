@@ -272,7 +272,7 @@ impl TicketServer {
         json(&ctx)
     }
 
-    #[tool(description = "Fichiers modifiés par un ticket, dérivés de git (commits portant le trailer Ticket: <id>, plus changements non commités si on est sur sa branche).")]
+    #[tool(description = "Fichiers modifiés par un ticket, dérivés de git (commits portant le trailer Ticket: <id>, plus changements non commités si on est sur sa branche), sans les notes des autres tickets ni BOARD.md.")]
     fn ticket_files(&self, Parameters(p): Parameters<IdParams>) -> Result<CallToolResult, McpError> {
         let project = tryt!(self.project(p.project.as_deref()));
         let id = tryt!(TicketId::parse(&p.id));

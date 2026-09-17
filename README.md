@@ -140,7 +140,7 @@ comment sortir les notes du dépôt (`git rm -r --cached 0-notes`).
 | Dossier | `0-notes/tickets/0013-add-thing-to-etc/` |
 | Branche | `feat/0013-add-thing-to-etc` (types : feat, fix, refacto, design, ci) |
 | Branches exemptées | main, master, develop, dev, stag, staging |
-| Trailer de commit | `Ticket: 0013` (ajouté automatiquement) |
+| Trailer de commit | `Ticket: 0013` (ajouté automatiquement ; un commit qui ne touche que les notes d'autres tickets reçoit leurs trailers) |
 | Statuts | todo, in-progress, blocked, review, done, cancelled |
 | Priorités | p0 … p3 |
 | Dépendances | `blocked_by: ["0003"]`, via `new --blocked-by 3` ou `depend 13 --on 3 [--remove]` |
@@ -161,7 +161,7 @@ dépendances encore ouvertes ; une dépendance `done` ou `cancelled` ne bloque p
 | `ticket_decide` | décision structurée |
 | `ticket_list` | liste filtrable |
 | `ticket_context` | point d'entrée de reprise |
-| `ticket_files` | fichiers modifiés, dérivés de git |
+| `ticket_files` | fichiers modifiés, dérivés de git (sans les notes des autres tickets ni `BOARD.md`) |
 | `notes_validate` | vérification complète |
 
 ## Diagnostic

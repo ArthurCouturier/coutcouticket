@@ -50,7 +50,10 @@ Un ticket peut attendre d'autres tickets (`blocked_by` dans le frontmatter), pos
 - Types autorisés et branches exemptées : voir `.coutcouticket.toml`.
 - Le hook `pre-commit` refuse un commit sur une branche non conforme.
 - Le hook `prepare-commit-msg` ajoute automatiquement le trailer `Ticket: 0013`.
-- Fichiers modifiés par un ticket : `coutcouticket files 13` (dérivé de git).
+  Exception : un commit qui ne touche que les notes d'autres tickets reçoit leurs
+  trailers à la place.
+- Fichiers modifiés par un ticket : `coutcouticket files 13` (dérivé de git, sans les
+  notes des autres tickets ni `BOARD.md`).
 
 ## Chercher efficacement
 

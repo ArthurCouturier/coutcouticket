@@ -158,20 +158,22 @@ pub fn add(root: &Path, path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Ajoute le trailer `Ticket: <id>` s'il est absent (délégué à git interpret-trailers).
-pub fn add_trailer(root: &Path, msg_file: &Path, value: &str) -> Result<()> {
-    git(
-        root,
-        &[
-            "interpret-trailers",
-            "--in-place",
-            "--if-exists",
-            "doNothing",
-            "--trailer",
-            &format!("Ticket: {value}"),
-            &msg_file.to_string_lossy(),
-        ],
-    )?;
+/// Ajoute un trailer `Ticket: <id>` par valeur, sauf si le message en porte déjà un
+/// (délégué à git interpret-trailers).
+pub fn add_trailers(root: &Path, msg_file: &Path, values: &[String]) -> Result<()> {
+    let msg = msg_file.to_string_lossy();
+    let existing = git(root, &["interpret-trailers", "--parse", &msg])?;
+    if values.is_empty() || existing.lines().any(|l| l.to_ascii_lowercase().starts_with("ticket:")) {
+        return Ok(());
+    }
+    let mut args: Vec<String> = vec!["interpret-trailers".into(), "--in-place".into(), "--if-exists".into(), "addIfDifferent".into()];
+    for v in values {
+        args.push("--trailer".into());
+        args.push(format!("Ticket: {v}"));
+    }
+    args.push(msg.to_string());
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    git(root, &args)?;
     Ok(())
 }
 
@@ -204,6 +206,18 @@ pub fn uncommitted_files(root: &Path) -> Result<Vec<String>> {
         .collect();
     files.sort();
     Ok(files)
+}
+
+/// Fichiers indexés pour le prochain commit (relatifs à la racine du dépôt).
+/// Respecte GIT_INDEX_FILE, positionné par git pendant `commit -a` ou `commit <chemins>`.
+pub fn staged_files(root: &Path) -> Result<Vec<String>> {
+    let out = git(root, &["diff", "--cached", "--name-only", "-z"])?;
+    Ok(out.split('\0').filter(|f| !f.is_empty()).map(String::from).collect())
+}
+
+/// Chemin de `root` relatif à la racine du dépôt (« » ou « sous/dossier/ »).
+pub fn show_prefix(root: &Path) -> Result<String> {
+    git(root, &["rev-parse", "--show-prefix"])
 }
 
 #[cfg(test)]

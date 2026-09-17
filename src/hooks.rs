@@ -64,7 +64,8 @@ pub fn pre_commit() -> Result<()> {
     Ok(())
 }
 
-/// prepare-commit-msg : ajoute le trailer `Ticket: <id>` depuis le nom de branche.
+/// prepare-commit-msg : ajoute le trailer `Ticket: <id>` depuis le nom de branche,
+/// ou ceux des tickets touchés si le commit ne contient que leurs notes.
 pub fn prepare_commit_msg(msg_file: &Path, source: Option<&str>) -> Result<()> {
     if source == Some("merge") {
         return Ok(());
@@ -73,7 +74,11 @@ pub fn prepare_commit_msg(msg_file: &Path, source: Option<&str>) -> Result<()> {
     let Some(branch) = git::current_branch(&project.root)? else { return Ok(()) };
     if let BranchKind::Ticket { id, .. } = naming::classify_branch(&branch, &project.cfg)? {
         let msg_path: PathBuf = if msg_file.is_absolute() { msg_file.to_path_buf() } else { std::env::current_dir()?.join(msg_file) };
-        git::add_trailer(&project.root, &msg_path, &id.format(project.cfg.id_width))?;
+        let staged = git::staged_files(&project.root)?;
+        let prefix = git::show_prefix(&project.root)?;
+        let ids: Vec<String> =
+            project.commit_tickets(id, &staged, &prefix).iter().map(|t| t.format(project.cfg.id_width)).collect();
+        git::add_trailers(&project.root, &msg_path, &ids)?;
     }
     Ok(())
 }

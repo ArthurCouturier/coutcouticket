@@ -47,6 +47,19 @@ pub struct Scan {
     pub problems: Vec<Problem>,
 }
 
+/// Rattachement d'un fichier du dépôt, pour les trailers et `files`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathOwner {
+    /// Hors du dossier de notes (ou hors du projet).
+    Code,
+    /// Dans le dossier d'un ticket.
+    Ticket(TicketId),
+    /// `BOARD.md`, régénéré par le hook pre-commit.
+    Board,
+    /// Autres notes : doc, README de 0-global, fichiers mal placés.
+    Notes,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct CreateInput {
     pub title: String,
@@ -345,14 +358,60 @@ impl Project {
             bail!("le projet n'est pas un dépôt git : lancer « git init » à sa racine pour suivre les fichiers des tickets");
         }
         let id_str = t.doc.front.id.format(self.cfg.id_width);
-        let committed = git::files_for_ticket(&self.root, &id_str)?;
+        let prefix = git::show_prefix(&self.root)?;
+        // Notes d'autres tickets et BOARD.md : présents dans des commits du ticket
+        // sans le concerner (commit de notes groupé, board régénéré à chaque commit).
+        let keep = |f: &String| match self.path_owner(&prefix, f) {
+            PathOwner::Ticket(other) => other == id,
+            PathOwner::Board => false,
+            PathOwner::Notes | PathOwner::Code => true,
+        };
+        let committed = git::files_for_ticket(&self.root, &id_str)?.into_iter().filter(keep).collect();
         let branch = naming::branch_name(&t.doc.front.kind, &t.dir_name);
         let pending = if git::current_branch(&self.root)?.as_deref() == Some(branch.as_str()) {
-            git::uncommitted_files(&self.root)?
+            git::uncommitted_files(&self.root)?.into_iter().filter(keep).collect()
         } else {
             vec![]
         };
         Ok((committed, pending))
+    }
+
+    /// Rattache un chemin git (relatif à la racine du dépôt, `prefix` = chemin du
+    /// projet dans le dépôt) au code, au dossier d'un ticket, au board ou aux autres notes.
+    pub fn path_owner(&self, prefix: &str, path: &str) -> PathOwner {
+        let notes = format!("{}/", self.cfg.notes_dir.trim_end_matches('/'));
+        let Some(rest) = path.strip_prefix(prefix).and_then(|p| p.strip_prefix(notes.as_str())) else {
+            return PathOwner::Code;
+        };
+        if rest == "0-global/BOARD.md" {
+            return PathOwner::Board;
+        }
+        if let Some((dir, file)) = rest.strip_prefix("tickets/").and_then(|r| r.split_once('/')) {
+            if let Some((id, _)) = naming::parse_dir_name(dir, &self.cfg).filter(|_| !file.is_empty()) {
+                return PathOwner::Ticket(id);
+            }
+        }
+        PathOwner::Notes
+    }
+
+    /// Tickets à inscrire en trailer d'un commit fait sur la branche de `branch_id`.
+    /// Un commit qui ne touche que des notes d'autres tickets leur revient ; tout autre
+    /// commit (code, notes du ticket de la branche, doc seule, index vide) revient à la branche.
+    pub fn commit_tickets(&self, branch_id: TicketId, staged: &[String], prefix: &str) -> Vec<TicketId> {
+        let mut touched = Vec::new();
+        for f in staged {
+            match self.path_owner(prefix, f) {
+                PathOwner::Code => return vec![branch_id],
+                PathOwner::Ticket(id) if id == branch_id => return vec![branch_id],
+                PathOwner::Ticket(id) => touched.push(id),
+                PathOwner::Board | PathOwner::Notes => {}
+            }
+        }
+        if touched.is_empty() {
+            return vec![branch_id];
+        }
+        normalize_ids(&mut touched);
+        touched
     }
 
     // -----------------------------------------------------------------------
@@ -982,5 +1041,49 @@ mod tests {
         assert!(row.contains("| — |"), "{row}");
         let done = board.lines().find(|l| l.contains("| Un |")).unwrap();
         assert_eq!(done.matches('|').count(), 7, "table des tickets fermés sans colonne Bloqué par : {done}");
+    }
+    #[test]
+    fn rattachement_des_chemins() {
+        let (_tmp, p) = project();
+        let t = |n| PathOwner::Ticket(TicketId(n));
+        assert_eq!(p.path_owner("", "src/main.rs"), PathOwner::Code);
+        assert_eq!(p.path_owner("", "0-notes-bis/tickets/0001-un/ticket.md"), PathOwner::Code);
+        assert_eq!(p.path_owner("", "0-notes/tickets/0003-trois/ticket.md"), t(3));
+        assert_eq!(p.path_owner("", "0-notes/tickets/0003-trois/sous/fichier.md"), t(3));
+        assert_eq!(p.path_owner("", "0-notes/0-global/BOARD.md"), PathOwner::Board);
+        assert_eq!(p.path_owner("", "0-notes/0-global/README.md"), PathOwner::Notes);
+        assert_eq!(p.path_owner("", "0-notes/doc/INDEX.md"), PathOwner::Notes);
+        assert_eq!(p.path_owner("", "0-notes/tickets/brouillon/ticket.md"), PathOwner::Notes);
+        assert_eq!(p.path_owner("", "0-notes/tickets/0003-trois"), PathOwner::Notes);
+        // Projet dans un sous-dossier du dépôt : chemins git relatifs à la racine du dépôt.
+        assert_eq!(p.path_owner("app/", "app/0-notes/tickets/0003-trois/journal.md"), t(3));
+        assert_eq!(p.path_owner("app/", "0-notes/tickets/0003-trois/journal.md"), PathOwner::Code);
+        assert_eq!(p.path_owner("app/", "app/src/lib.rs"), PathOwner::Code);
+    }
+
+    #[test]
+    fn trailers_selon_le_contenu_du_commit() {
+        let (_tmp, p) = project();
+        let ids = |staged: &[&str]| {
+            let staged: Vec<String> = staged.iter().map(|s| s.to_string()).collect();
+            p.commit_tickets(TicketId(8), &staged, "").iter().map(|i| i.0).collect::<Vec<_>>()
+        };
+        // Notes d'autres tickets seulement : les tickets touchés, pas la branche.
+        assert_eq!(
+            ids(&[
+                "0-notes/tickets/0002-deux/ticket.md",
+                "0-notes/tickets/0001-un/journal.md",
+                "0-notes/tickets/0002-deux/journal.md",
+                "0-notes/0-global/BOARD.md",
+                "0-notes/doc/INDEX.md",
+            ]),
+            vec![1, 2]
+        );
+        // Tout le reste revient à la branche.
+        assert_eq!(ids(&["0-notes/tickets/0001-un/journal.md", "src/main.rs"]), vec![8]);
+        assert_eq!(ids(&["0-notes/tickets/0001-un/journal.md", "0-notes/tickets/0008-huit/journal.md"]), vec![8]);
+        assert_eq!(ids(&["0-notes/doc/architecture.md", "0-notes/0-global/BOARD.md"]), vec![8]);
+        assert_eq!(ids(&["src/main.rs"]), vec![8]);
+        assert_eq!(ids(&[]), vec![8]);
     }
 }
