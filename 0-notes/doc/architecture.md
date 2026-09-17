@@ -57,6 +57,11 @@ appellent le cœur, rien de plus.
 - En mode démon, le paramètre `project` est obligatoire et doit être enregistré.
 - Watcher (thread dédié, `notify`) : surveille le dossier de config globale (registre)
   et le dossier de notes de chaque projet enregistré.
+- macOS : LaunchAgent `app.coutcouticket.daemon` (`RunAtLoad`, `KeepAlive`),
+  journal dans `~/Library/Logs/coutcouticket/daemon.log`. Piège : avec
+  `ProcessType=Background`, `Nice` et `LowPriorityIO`, le démon a mis environ 1 min
+  à écouter après l'ouverture de session. Une session Claude Code ouverte dans ce
+  délai n'a pas le MCP (connexion refusée, `/mcp` pour reconnecter).
 
 ### Pièges du watcher
 

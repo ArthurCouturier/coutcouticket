@@ -2,7 +2,7 @@
 id: "0001"
 title: "Socle v0 : cœur, CLI, MCP, démon, hooks et plugin"
 type: feat
-status: review
+status: done
 priority: p1
 projects: [core, mcp, daemon, plugin]
 created: 2026-09-17

@@ -12,3 +12,13 @@ Socle complet construit et testé sous Linux : 10 tests unitaires, 3 tests de bo
 ## 2026-09-17 10:13 — statut : todo → review
 
 Code complet ; relecture et validation macOS attendues (0002).
+
+## 2026-09-17 15:17 — avancement
+
+Validation macOS terminée (0002 clos), comme l'exigeait l'entrée précédente. Les 6 critères sont cochés. Correctifs issus de la validation : 0006 (fait), 0007 et 0009 (à faire).
+
+**Prochaine étape :** Aucune
+
+## 2026-09-17 15:17 — statut : review → done
+
+Socle v0 livré et validé sous Linux puis sur macOS (0002).

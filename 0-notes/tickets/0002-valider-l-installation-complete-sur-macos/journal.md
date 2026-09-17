@@ -94,3 +94,15 @@ Critère 6 vérifié et coché, sur /Users/arthurcouturier/dev/je-taime-app (bra
 Reste le critère 1 seulement.
 
 **Prochaine étape :** Après la déconnexion macOS faite par l'utilisateur : `ps -o pid,lstart -p $(pgrep -f 'coutcouticket daemon run')` doit montrer un PID et une heure postérieurs à la reconnexion, et `coutcouticket daemon status` doit répondre ok. Cocher alors le critère 1 et clôturer le 0002, puis passer le 0001 en done.
+
+## 2026-09-17 15:17 — avancement
+
+Critère 1 vérifié après un redémarrage macOS (boot à 15:11) et coché : launchd a relancé le démon à 15:12:13 (PID 3795, RunAtLoad), et `coutcouticket daemon status` a répondu `coutcouticket 0.1.0 ok` à 15:13:12. Les 6 critères sont remplis.
+Défaut constaté : le port 47813 n'écoutait qu'environ 1 min après le lancement. La session Claude Code ouverte pendant ce délai a échoué à se connecter au MCP (ConnectionRefused), et `/mcp` a reconnecté. Cause probable : priorité basse du LaunchAgent (ProcessType=Background, Nice, LowPriorityIO). Suivi dans le ticket 0009. Piège ajouté dans doc/architecture.md.
+Hors périmètre : git échoue tant que la licence Xcode n'est pas acceptée (`sudo xcodebuild -license`).
+
+**Prochaine étape :** Aucune (suite : ticket 0009)
+
+## 2026-09-17 15:17 — statut : in-progress → done
+
+Installation complète validée sur macOS : les 6 critères sont remplis. Le délai d'environ 1 min avant que le démon écoute après l'ouverture de session est suivi dans le 0009.
