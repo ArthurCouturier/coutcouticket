@@ -45,7 +45,7 @@ while [ $# -gt 0 ]; do
 done
 
 # --- Plateforme -----------------------------------------------------------------
-[ "$(uname -s)" = "Darwin" ] || die "seul macOS est publié en binaire. Ailleurs : « cargo install --git https://github.com/$REPO »."
+[ "$(uname -s)" = "Darwin" ] || die "ce script est pour macOS. Windows : install.ps1 ; ailleurs : « cargo install --git https://github.com/$REPO »."
 case "$(uname -m)" in
   arm64|aarch64) target="aarch64-apple-darwin" ;;
   x86_64) target="x86_64-apple-darwin" ;;
