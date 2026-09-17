@@ -14,7 +14,7 @@ conçu pour travailler avec Claude Code sans friction.
 coutcouticket (binaire unique, ~5 Mo)
 ├── CLI           init, new, start, status, depend, log, decide, list, overview, show, files, board, validate
 ├── mcp           serveur MCP stdio (secours)
-├── daemon run    serveur MCP HTTP 127.0.0.1 + surveillance des notes (LaunchAgent)
+├── daemon run    serveur MCP HTTP 127.0.0.1 + surveillance des notes (LaunchAgent / tâche planifiée)
 └── hook          pre-commit, prepare-commit-msg, session-start
           │
           ▼
@@ -27,11 +27,13 @@ Principes :
 - **Contraintes plutôt que consignes.** Statuts en enum dans le schéma MCP,
   frontmatter strict, branche créée uniquement par l'outil, commit refusé si non conforme.
 - **Sobriété.** Démon mesuré à ~6 Mo de RAM et 0 CPU au repos. Surveillance
-  événementielle (FSEvents), hooks git en ~10 ms sur 200 tickets.
+  événementielle (FSEvents, ReadDirectoryChangesW), hooks git en ~10 ms sur 200 tickets.
 
 ## Installation (une fois par machine)
 
-Prérequis : macOS (Apple Silicon ou Intel), git, Claude Code.
+Prérequis : macOS (Apple Silicon ou Intel) ou Windows 10/11 x64, git, Claude Code.
+
+### macOS
 
 Binaire publié (sans toolchain Rust) :
 
@@ -48,7 +50,37 @@ déjà présent dans le `PATH`). Options : `sh -s -- --version 0.2.0 --dir ~/bin
 Archives manuelles : page [Releases](https://github.com/ArthurCouturier/coutcouticket/releases)
 (`coutcouticket-<version>-aarch64-apple-darwin.tar.gz` et `.sha256`).
 
-Alternative depuis les sources (Rust ≥ 1.89, `rustup`) :
+### Windows
+
+Prérequis : [Git for Windows](https://git-scm.com/download/win) (ses hooks s'exécutent
+avec le `sh` qu'il fournit). Aucun droit administrateur n'est nécessaire. Dans PowerShell :
+
+```powershell
+irm https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.ps1 | iex
+coutcouticket daemon install        # tâche planifiée : démarre à l'ouverture de session, sans fenêtre
+coutcouticket daemon status         # → « coutcouticket 0.1.0 ok »
+coutcouticket setup-claude --apply  # enregistre le MCP du démon dans Claude Code (portée utilisateur)
+```
+
+Le script télécharge `coutcouticket-<version>-x86_64-pc-windows-msvc.zip`, vérifie sa somme
+SHA-256, installe `coutcouticket.exe` dans `%LOCALAPPDATA%\Programs\coutcouticket` (ou à la
+place de celui déjà présent dans le `PATH`) et ajoute ce dossier au `PATH` de l'utilisateur
+(ouvrir un nouveau terminal ensuite). Paramètres :
+`& ([scriptblock]::Create((irm .../install.ps1))) -Version 0.2.0 -Dir C:\outils -NoDaemon`.
+
+Installation manuelle : télécharger le `.zip` et son `.sha256` depuis la page
+[Releases](https://github.com/ArthurCouturier/coutcouticket/releases), vérifier
+(`Get-FileHash -Algorithm SHA256 <zip>`), extraire `coutcouticket.exe` dans un dossier du
+`PATH` utilisateur, puis lancer les trois commandes ci-dessus.
+
+`daemon install` crée la tâche planifiée `coutcouticket-daemon` (déclencheur : ouverture de
+session de l'utilisateur courant, relance en cas d'échec) et la démarre ; `daemon uninstall`
+l'arrête et la retire. Configuration dans `%APPDATA%\coutcouticket`, journal dans
+`%LOCALAPPDATA%\coutcouticket\daemon.log`.
+
+### Depuis les sources
+
+Toutes plateformes (Rust ≥ 1.89, `rustup`) :
 
 ```sh
 cd ~/dev/coutcouticket
@@ -88,10 +120,12 @@ déplacé le binaire, relancer `coutcouticket init` dans chaque projet.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.sh | sh
+# Windows (PowerShell) :
+irm https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.ps1 | iex
 ```
 
-Le script remplace le binaire au même emplacement (les hooks git et le LaunchAgent
-restent valides) puis, si le démon est installé, lance `coutcouticket daemon install` :
+Le script remplace le binaire au même emplacement (les hooks git, le LaunchAgent et la
+tâche planifiée restent valides) puis, si le démon est installé, lance `coutcouticket daemon install` :
 idempotent, il garde port et jeton et redémarre le démon sur la nouvelle version.
 Vérifier avec `coutcouticket daemon status`.
 
@@ -187,7 +221,9 @@ arrêté, le fichier peut être en retard : `overview` reste la vue en direct.
 
 ```sh
 coutcouticket daemon status
-tail -f ~/Library/Logs/coutcouticket/daemon.log
+tail -f ~/Library/Logs/coutcouticket/daemon.log                      # macOS
+Get-Content -Wait $env:LOCALAPPDATA\coutcouticket\daemon.log          # Windows
+schtasks /Query /TN coutcouticket-daemon /V /FO LIST                  # Windows : état de la tâche
 coutcouticket projects list
 coutcouticket validate
 COUTCOUTICKET_DEBUG=1 coutcouticket daemon run   # démon au premier plan, événements détaillés
@@ -201,8 +237,9 @@ Autre binaire git : `COUTCOUTICKET_GIT_BIN`.
 
 Secours sans démon : `claude mcp add --scope user coutcouticket-stdio -- coutcouticket mcp`.
 
-Configuration globale : `~/.config/coutcouticket/` (`projects.toml`, `daemon.toml` avec
-le port et le jeton, en 0600, et `OVERVIEW.md` généré par le démon).
+Configuration globale : `~/.config/coutcouticket/` (Windows : `%APPDATA%\coutcouticket\`)
+avec `projects.toml`, `daemon.toml` (port et jeton ; 0600 sous macOS, ACL du profil sous
+Windows) et `OVERVIEW.md` généré par le démon.
 
 ## Développement
 
@@ -214,7 +251,7 @@ cargo build --release
 
 Publier une version : aligner `version` dans `Cargo.toml`, commiter, puis
 `git tag vX.Y.Z && git push origin vX.Y.Z`. Le workflow `release` teste, construit les
-binaires macOS (arm64, x86_64) et crée la release GitHub. Détails :
+binaires macOS (arm64, x86_64) et Windows (x64), et crée la release GitHub. Détails :
 `0-notes/doc/distribution.md`.
 
 Les tickets de coutcouticket lui-même sont dans `0-notes/`.

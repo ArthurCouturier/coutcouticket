@@ -4,11 +4,13 @@
 
 | Élément | Fichier | Rôle |
 |---|---|---|
-| CI | `.github/workflows/ci.yml` | `cargo clippy --all-targets --locked -- -D warnings` (tout avertissement fait échouer) + `cargo test --locked` + `sh -n install.sh` sur push `main` et PR (macOS) |
+| CI | `.github/workflows/ci.yml` | matrice `macos-15` + `windows-latest` : `cargo clippy --all-targets --locked -- -D warnings` (tout avertissement fait échouer), `cargo build`, `cargo test --locked --no-fail-fast` ; puis `sh -n install.sh` (macOS) ou essai réel d'`install.ps1` (Windows) ; sur push `main` et PR |
 | Release | `.github/workflows/release.yml` | sur tag `v*` : tests, build, archives, GitHub Release ; lancement manuel = essai sans publication |
-| Installation | `install.sh` (racine) | télécharge, vérifie, installe, relance le démon |
+| Installation macOS | `install.sh` (racine) | télécharge, vérifie, installe, relance le démon |
+| Installation Windows | `install.ps1` (racine) | idem sous Windows (PowerShell 5.1 et 7) |
 
-Seul macOS est publié en binaire. Ailleurs : `cargo install --git https://github.com/ArthurCouturier/coutcouticket`.
+Binaires publiés : macOS (aarch64, x86_64) et Windows x64. Ailleurs (Linux) :
+`cargo install --git https://github.com/ArthurCouturier/coutcouticket`.
 
 ## Publier une version
 
@@ -19,6 +21,13 @@ Seul macOS est publié en binaire. Ailleurs : `cargo install --git https://githu
    - sur `macos-15` (Apple Silicon) : `cargo test` puis build `aarch64-apple-darwin` ;
      `x86_64-apple-darwin` est compilé en croisé sur le même runner, sans tests ;
    - re-signe en ad hoc (`codesign --force --sign -`) et vérifie la signature ;
+   - sur `windows-latest` (job `build-windows`, shell bash) : `cargo test` (tâche planifiée
+     réellement installée, `COUTCOUTICKET_TEST_WINDOWS_SERVICE=1`), build
+     `x86_64-pc-windows-msvc` avec `RUSTFLAGS=-C target-feature=+crt-static` (pas de
+     dépendance à `vcruntime140.dll`), `--version`, puis
+     `coutcouticket-<version>-x86_64-pc-windows-msvc.zip` (7z ; dossier : `coutcouticket.exe`
+     + README) et `.zip.sha256` au format `shasum` (deux espaces, sans `*`). Version lue par
+     `cargo pkgid` (pas de python3 garanti) ;
    - produit `coutcouticket-<version>-<target>.tar.gz` (dossier du même nom : binaire + README)
      et `<archive>.sha256` (format `shasum -a 256`), plus un `SHA256SUMS` global ;
    - téléverse les archives (`actions/upload-artifact@v7`, un artefact par cible), puis le job
@@ -27,7 +36,7 @@ Seul macOS est publié en binaire. Ailleurs : `cargo install --git https://githu
    - publie avec `gh release create --verify-tag --generate-notes` (étape réservée au push d'un tag `v*`).
 
 Tag erroné : supprimer le tag local et distant, corriger, recréer. Un workflow échoué ne
-publie rien (la release n'est créée qu'après les deux builds).
+publie rien (la release n'est créée qu'après tous les builds : `needs: [build, build-windows]`).
 
 ## Essayer la release sans tag
 
@@ -60,6 +69,36 @@ Déroulé :
 6. Avertissements : dossier hors `PATH`, autre binaire qui masque le nouveau, hooks git
    pointant vers l'ancien emplacement.
 
+## install.ps1 (Windows)
+
+```powershell
+irm https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.ps1 | iex
+# avec paramètres :
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.ps1))) -Version 0.2.0
+```
+
+Paramètres `-Version`, `-Dir`, `-NoDaemon` ; mêmes variables d'environnement qu'`install.sh`
+(`COUTCOUTICKET_BASE_URL` accepte `file://`, via `Net.WebClient`).
+
+Déroulé :
+1. Dernière version : même redirection `releases/latest` (`Invoke-WebRequest -Method Head`).
+2. Dossier : celui du `coutcouticket.exe` trouvé dans le `PATH`, sinon
+   `%LOCALAPPDATA%\Programs\coutcouticket`. Aucun droit administrateur.
+3. Téléchargement du `.zip` et de sa somme, vérification (`Get-FileHash`), extraction,
+   `Unblock-File` (marque « Internet »), test `--version`.
+4. L'ancien `coutcouticket.exe` est renommé en `.exe.old` (possible même s'il tourne),
+   le nouveau copié à sa place ; `.old` est supprimé au passage suivant.
+5. Dossier ajouté au `Path` utilisateur (registre, nouveaux terminaux) s'il n'y est pas.
+6. Si la tâche `coutcouticket-daemon` existe : `daemon install` (3 essais), puis `daemon status`.
+7. Avertissements : autre binaire qui masque le nouveau, hooks git pointant vers l'ancien emplacement.
+
+Pièges : le fichier est en **UTF-8 avec BOM** (sans BOM, Windows PowerShell 5.1 le lit en
+ANSI et casse les accents) ; erreurs par `throw`, jamais `exit` (avec `irm | iex`, `exit`
+fermerait le terminal) ; commandes natives via `Invoke-Native` (sous 5.1 avec
+`ErrorActionPreference=Stop`, une sortie sur stderr devient une erreur terminale). La CI
+Windows l'exécute sous PowerShell 5.1 sur une archive locale : installation, mise à jour
+démon en marche, `daemon status`, `daemon uninstall`.
+
 ## Mise à jour manuelle
 
 ```sh
@@ -71,18 +110,23 @@ coutcouticket daemon status   # doit afficher la nouvelle version
 
 ## Invariants et pièges
 
-- **Chemins mémorisés** : les hooks git notent le chemin de `current_exe` (non canonicalisé)
-  au moment d'`init` ; le plist note `current_exe` **canonicalisé** au moment de
+- **Chemins mémorisés** : les hooks git notent le chemin de `current_exe` (non canonicalisé ;
+  sous Windows au format `C:/…/coutcouticket.exe`) au moment d'`init` ; le plist (macOS) ou
+  la tâche planifiée (Windows) note `current_exe` **canonicalisé** au moment de
   `daemon install`. Remplacer le binaire au même chemin garde tout valide. D'où le choix du
   dossier par défaut. Changer de dossier : relancer `init` dans chaque projet et `daemon install`.
 - **Le démon garde l'ancien binaire en mémoire** tant qu'il n'est pas relancé.
-  `daemon install` le relance (`launchctl bootout` puis `bootstrap`).
+  `daemon install` le relance (`launchctl bootout` puis `bootstrap` ; Windows : arrêt de
+  l'instance notée dans `daemon.pid`, puis `schtasks /Run`).
 - **`daemon install` est idempotent** : `DaemonConfig::load_or_create` garde le port et le
   jeton (la config MCP de Claude Code reste valide), le plist est réécrit, le service rechargé.
   Piège : `bootstrap` juste après `bootout` peut échouer (« Bootstrap failed: 5 ») si l'arrêt
   n'est pas fini ; `install.sh` réessaie.
 - **Jamais d'écriture sur place d'un binaire** : macOS garde en cache la signature par inode
   et tue (SIGKILL) un binaire signé modifié sur place. Toujours copier puis renommer.
+  Windows refuse d'écrire un `.exe` en cours d'exécution mais permet de le renommer.
+- **Fins de ligne** : `.gitattributes` (`* text=auto eol=lf`) ; sans lui, `actions/checkout`
+  sous Windows (`core.autocrlf=true`) extrairait les gabarits `include_str!` en CRLF.
 - **Signature** : un binaire arm64 doit être signé (ad hoc suffit). Pas de notarisation :
   `curl` ne pose pas d'attribut de quarantaine ; une archive venue d'un navigateur en a un,
   retiré par `install.sh` (sinon : `xattr -d com.apple.quarantine coutcouticket`).

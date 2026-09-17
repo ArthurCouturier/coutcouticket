@@ -8,7 +8,7 @@ Un binaire unique, plusieurs façades sur un même cœur :
 |---|---|---|
 | CLI | `src/main.rs` | l'utilisateur, les hooks |
 | MCP stdio | `src/mcp.rs` (`serve_stdio`) | Claude Code en secours |
-| Démon HTTP | `src/daemon.rs` (`run`) | Claude Code, via LaunchAgent |
+| Démon HTTP | `src/daemon.rs` (`run`) | Claude Code, via LaunchAgent (macOS) ou tâche planifiée (Windows) |
 | Hooks | `src/hooks.rs` | git, Claude Code (SessionStart) |
 
 Toute logique métier est dans `src/store.rs`. Les façades valident les entrées et
@@ -21,13 +21,13 @@ appellent le cœur, rien de plus.
 | `store.rs` | opérations sur les tickets : scan, création, statut, journal, décisions, contexte, validation |
 | `model.rs` | frontmatter strict (parse/rendu), `Status`, `Priority`, `TicketId` |
 | `naming.rs` | slug, nom de dossier, nom et classification de branche |
-| `config.rs` | `.coutcouticket.toml`, registre des projets, configuration du démon |
+| `config.rs` | `.coutcouticket.toml`, registre des projets, configuration du démon, dossier de config globale |
 | `board.rs` | rendu déterministe de `BOARD.md` |
 | `overview.rs` | vue des tickets ouverts de tous les projets du registre (`overview`, `tickets_overview`, `OVERVIEW.md`) |
 | `init.rs` | création et réparation idempotentes de l'arborescence, bloc CLAUDE.md, hooks git |
 | `git.rs` | appels au binaire git |
 | `claude.rs` | `setup-claude` : lecture de `claude mcp get`, ajout ou remplacement idempotent |
-| `fsutil.rs` | écriture atomique, écriture si changement, verrou inter-processus |
+| `fsutil.rs` | écriture atomique, écriture si changement, verrou inter-processus, `canonicalize` sans préfixe `\\?\` |
 | `templates.rs` + `templates/` | contenus embarqués dans le binaire |
 
 ## Invariants
@@ -42,6 +42,12 @@ appellent le cœur, rien de plus.
   (comme `blocked_by`) n'est écrite que si elle a une valeur : les tickets existants
   ne changent pas.
 - **Suffixe de branche = nom de dossier**, sans conversion.
+- **Chemins portables** : toute canonicalisation passe par `fsutil::canonicalize`
+  (Windows : `C:\…` et non `\\?\C:\…`, que git et les hooks ne comprennent pas) ;
+  `Project::rel` rend les chemins relatifs avec des `/` sur toutes les plateformes
+  (sorties CLI, MCP, `BOARD.md` identiques). Le frontmatter accepte les fins de ligne
+  CRLF (git avec `core.autocrlf`) ; `.gitattributes` impose LF dans ce dépôt (gabarits
+  `include_str!`, scripts sh).
 - **`init` ne réécrit jamais un contenu utilisateur** : `create_if_missing` partout,
   sauf le bloc balisé de `CLAUDE.md` et les hooks portant le marqueur coutcouticket.
   Le `.gitignore` n'est modifié que par ajout en fin de fichier.
@@ -105,6 +111,11 @@ appellent le cœur, rien de plus.
   en temps constant, toute requête portant un en-tête `Origin` refusée (403).
 - En mode démon, le paramètre `project` est obligatoire et doit être enregistré
   (sauf `tickets_overview`, qui n'en a pas).
+- Configuration globale (`config::global_dir`) : `COUTCOUTICKET_HOME`, sinon
+  `%APPDATA%\coutcouticket` (Windows), sinon `$XDG_CONFIG_HOME/coutcouticket`, sinon
+  `~/.config/coutcouticket`. Jeton de `daemon.toml` tiré par `getrandom`. Permissions :
+  0600 sous Unix ; sous Windows, ACL héritées de `%APPDATA%` (utilisateur, SYSTEM,
+  administrateurs), rien de codé.
 - Ordre de démarrage de `run` : config du démon, **bind du port en premier**, puis
   construction du routeur, puis lancement du watcher dans son thread. Les connexions
   arrivées avant `axum::serve` attendent dans la file du noyau au lieu d'être refusées.
@@ -113,9 +124,12 @@ appellent le cœur, rien de plus.
   et le dossier de notes de chaque projet enregistré. Il régénère les `BOARD.md` touchés
   et `OVERVIEW.md`.
 - Journal (`daemon.log`) : chaque ligne commence par un horodatage à la milliseconde
-  (macro `log!` de `daemon.rs`). Lignes clés : « lancement du démon … processus lancé
+  (macro `log!` → `write_log` de `daemon.rs`). Lignes clés : « lancement du démon … processus lancé
   il y a N ms » (délai exec → `run`, via `proc_pidinfo`, macOS uniquement),
-  « à l'écoute … », « surveillance prête (n projet(s), N ms …) ».
+  « à l'écoute … », « surveillance prête (n projet(s), N ms …) », « arrêt sur erreur : … ».
+  Par défaut sur stderr (launchd le redirige) ; `daemon run --log-file F` (option cachée,
+  utilisée par la tâche Windows) écrit dans `F` et note le pid dans `daemon.pid` à côté,
+  **après** le bind (une instance refusée n'écrase pas le pid de l'instance active).
 - macOS : LaunchAgent `app.coutcouticket.daemon` (`RunAtLoad`, `KeepAlive`,
   `ProcessType=Interactive`, sans `Nice` ni `LowPriorityIO`), journal dans
   `~/Library/Logs/coutcouticket/daemon.log`. Piège : avec `ProcessType=Background`,
@@ -126,6 +140,24 @@ appellent le cœur, rien de plus.
   la cause retenue. Ne pas le réintroduire : le démon est événementiel et ne consomme
   rien au repos, le bridage ne fait que retarder le démarrage. Le plist installé n'est
   réécrit que par `daemon install` (à relancer après toute modification du gabarit).
+- Windows (module `daemon::windows`, XML dans `windows_task_xml`) : tâche planifiée
+  `coutcouticket-daemon` (surchargeable par `COUTCOUTICKET_DAEMON_TASK`) à la racine du
+  planificateur, créée par `schtasks /Create /XML` (fichier UTF-16 avec BOM,
+  `%LOCALAPPDATA%\coutcouticket\daemon-task.xml`). Déclencheur `LogonTrigger` limité à
+  `USERDOMAIN\USERNAME`, `InteractiveToken`, `LeastPrivilege` : aucun droit administrateur
+  (un déclencheur pour tout utilisateur, comme `schtasks /SC ONLOGON`, en exige).
+  `ExecutionTimeLimit PT0S` (72 h par défaut), pas d'arrêt sur batterie, `IgnoreNew`,
+  `RestartOnFailure` (1 min, 999 fois), `Priority 5` (7 par défaut = sous la normale, même
+  piège que le bridage launchd). Action : `conhost.exe --headless "<exe>" daemon run
+  --log-file "%LOCALAPPDATA%\coutcouticket\daemon.log"` pour ne pas ouvrir de fenêtre
+  console ; conhost absent → exe lancé directement, `daemon install` le signale.
+  `install` et `uninstall` arrêtent d'abord l'instance en cours (`schtasks /End`, puis
+  `taskkill` du pid de `daemon.pid` si `tasklist` confirme coutcouticket, puis attente de la
+  libération du port, 5 s max) ; `install` lance ensuite la tâche (`/Run`) et attend
+  `/health` (10 s). `daemon status` précise, en cas d'échec, si la tâche existe.
+  L'export (`schtasks /Query /XML`) omet `LeastPrivilege`, valeur par défaut, et remplace
+  l'utilisateur du `Principal` par son SID.
+- Linux : pas de service (`daemon install` explique de lancer `daemon run` à la main).
 
 ### Enregistrement dans Claude Code (`claude.rs`)
 
@@ -139,6 +171,8 @@ appellent le cœur, rien de plus.
   portée `local`/`project` masque la portée `user` : elle est retirée aussi.
 - Les jetons (`Bearer …`) sont masqués dans les messages d'erreur qui reprennent la
   sortie de `claude`. Binaire surchargeable par `COUTCOUTICKET_CLAUDE_BIN`.
+- Windows : `Command::new("claude")` ne cherche que `claude.exe` ; `claude_bin` cherche
+  `claude.exe`, `claude.cmd` (installation npm) puis `claude.bat` dans le PATH (`find_in_path`).
 
 ### Pièges du watcher
 
@@ -148,7 +182,7 @@ appellent le cœur, rien de plus.
   lecteur continu ne doit pas pouvoir bloquer la régénération.
 - Ignorer `BOARD.md` et les fichiers cachés (fichiers temporaires d'écriture atomique).
 - Les événements portent des chemins canoniques (FSEvents : `/tmp` → `/private/tmp`).
-  Le dossier de config globale est donc canonicalisé avant de comparer à `projects.toml` ;
+  Le dossier de config globale est donc canonicalisé (`fsutil::canonicalize`) avant de comparer à `projects.toml` ;
   sinon un `HOME` ou `COUTCOUTICKET_HOME` derrière un lien symbolique masque les
   changements du registre. Les racines du registre sont déjà canoniques (`Registry::add`).
 
@@ -182,6 +216,9 @@ appellent le cœur, rien de plus.
   (`current_exe`, non canonicalisé), avec repli sur le PATH. Piège : un client git
   graphique hérite du PATH de launchd (`/usr/bin:/bin:/usr/sbin:/sbin`), sans
   `~/.cargo/bin` ni `/opt/homebrew/bin`. Binaire déplacé hors du PATH → relancer `init`.
+- Windows : Git for Windows exécute les hooks avec son `sh` (MSYS). Le chemin noté est
+  converti en `C:/…/coutcouticket.exe` (`windows_sh_path`), que MSYS accepte tel quel ;
+  `[ -x ]` et `command -v coutcouticket` y trouvent le `.exe`. Pas de bit d'exécution à poser.
 - `pre-commit` régénère `BOARD.md` et ne l'ajoute au commit que s'il n'est pas ignoré
   (`git::is_ignored`) : `git add` d'un chemin ignoré échoue et bloquerait le commit.
 - `prepare-commit-msg` (sauf merge) choisit les trailers `Ticket:` d'après les fichiers
@@ -242,3 +279,13 @@ convention de dossier, sans déclaration dans le manifeste :
   avec un faux git (`COUTCOUTICKET_GIT_BIN` : licence Xcode en code 69, panne en 128,
   binaire introuvable) comparé à un vrai dossier hors dépôt.
 - `git.rs` : message d'échec et correction Xcode testés sur des `Output` construits.
+- Plateformes : la CI tourne sur `macos-15` et `windows-latest`. Réservés à Unix (scripts
+  sh simulés, PATH de launchd) : `hooks_hors_du_path`, `setup_claude_idempotent`,
+  `git_en_echec`, `plist_is_well_formed`. Réservés à Windows : `hooks_git_for_windows`
+  (sh de Git for Windows, binaire noté en `C:/…`, PATH sans le binaire, binaire disparu)
+  et `daemon_tache_planifiee_windows` (install, export XML, status, réinstallation avec
+  changement de pid, uninstall). Ce dernier installe réellement la tâche dans la session :
+  il ne s'exécute que si `COUTCOUTICKET_TEST_WINDOWS_SERVICE` est défini (CI), et utilise
+  la config réelle (`%APPDATA%`), la tâche ne recevant pas l'environnement du test.
+  `daemon_journal_dans_un_fichier` (toutes plateformes) couvre `--log-file` et `daemon.pid`.
+  Chemins canoniques comparés via `canon` (sans `\\?\`).
