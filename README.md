@@ -31,14 +31,29 @@ Principes :
 
 ## Installation (une fois par machine)
 
-Prérequis : Rust ≥ 1.89 (`rustup`), git, Claude Code.
+Prérequis : macOS (Apple Silicon ou Intel), git, Claude Code.
+
+Binaire publié (sans toolchain Rust) :
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.sh | sh
+coutcouticket daemon install        # LaunchAgent : démarre au login, relancé s'il tombe
+coutcouticket daemon status         # → « coutcouticket 0.1.0 ok »
+coutcouticket setup-claude --apply  # enregistre le MCP du démon dans Claude Code (portée utilisateur)
+```
+
+Le script télécharge la dernière release GitHub, vérifie sa somme SHA-256, retire la
+quarantaine Gatekeeper et installe dans `~/.local/bin` (ou à la place du `coutcouticket`
+déjà présent dans le `PATH`). Options : `sh -s -- --version 0.2.0 --dir ~/bin --no-daemon`.
+Archives manuelles : page [Releases](https://github.com/ArthurCouturier/coutcouticket/releases)
+(`coutcouticket-<version>-aarch64-apple-darwin.tar.gz` et `.sha256`).
+
+Alternative depuis les sources (Rust ≥ 1.89, `rustup`) :
 
 ```sh
 cd ~/dev/coutcouticket
 cargo install --path .              # installe ~/.cargo/bin/coutcouticket
-coutcouticket daemon install        # LaunchAgent : démarre au login, relancé s'il tombe
-coutcouticket daemon status         # → « coutcouticket 0.1.0 ok »
-coutcouticket setup-claude --apply  # enregistre le MCP du démon dans Claude Code (portée utilisateur)
+# puis daemon install, daemon status et setup-claude --apply comme ci-dessus
 ```
 
 Plugin Claude Code (skill `ticket` + hook de démarrage de session), dans Claude Code :
@@ -48,10 +63,30 @@ Plugin Claude Code (skill `ticket` + hook de démarrage de session), dans Claude
 /plugin install coutcouticket@coutcouticket
 ```
 
-`~/.cargo/bin` doit être dans le `PATH` : le hook de session appelle `coutcouticket`.
+Sans clone local, la marketplace s'ajoute depuis GitHub :
+`/plugin marketplace add ArthurCouturier/coutcouticket`.
+
+Le dossier du binaire (`~/.local/bin` ou `~/.cargo/bin`) doit être dans le `PATH` : le hook de session appelle `coutcouticket`.
 Les hooks git, eux, appellent le binaire par le chemin noté lors de `init` (avec repli
 sur le `PATH`) : ils fonctionnent aussi depuis un client git graphique. Après avoir
 déplacé le binaire, relancer `coutcouticket init` dans chaque projet.
+
+## Mise à jour
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.sh | sh
+```
+
+Le script remplace le binaire au même emplacement (les hooks git et le LaunchAgent
+restent valides) puis, si le démon est installé, lance `coutcouticket daemon install` :
+idempotent, il garde port et jeton et redémarre le démon sur la nouvelle version.
+Vérifier avec `coutcouticket daemon status`.
+
+Depuis les sources : `cargo install --path .` puis `coutcouticket daemon install`
+(sans cette seconde commande, le démon continue d'exécuter l'ancienne version).
+
+Binaire installé dans un autre dossier qu'avant : relancer `coutcouticket init` dans
+chaque projet (`coutcouticket projects list`) pour mettre à jour le chemin des hooks git.
 
 ## Dans chaque projet
 
@@ -131,5 +166,10 @@ le port et le jeton, en 0600).
 cargo test            # unitaires + bout en bout (binaire réel, git, hooks, MCP stdio, démon HTTP)
 cargo build --release
 ```
+
+Publier une version : aligner `version` dans `Cargo.toml`, commiter, puis
+`git tag vX.Y.Z && git push origin vX.Y.Z`. Le workflow `release` teste, construit les
+binaires macOS (arm64, x86_64) et crée la release GitHub. Détails :
+`0-notes/doc/distribution.md`.
 
 Les tickets de coutcouticket lui-même sont dans `0-notes/`.
