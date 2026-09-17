@@ -1,7 +1,7 @@
 <!-- GÉNÉRÉ par coutcouticket — ne pas éditer. Régénérer : coutcouticket board -->
 # Tableau des tickets — coutcouticket
 
-**14 ouvert(s)** sur 22 · 0 en cours · 3 en revue · 0 bloqué · 11 à faire · 8 terminé · 0 annulé
+**15 ouvert(s)** sur 23 · 0 en cours · 3 en revue · 0 bloqué · 12 à faire · 8 terminé · 0 annulé
 
 ## En cours (0)
 
@@ -19,7 +19,7 @@ _Aucun ticket._
 
 _Aucun ticket._
 
-## À faire (11)
+## À faire (12)
 
 | ID | Titre | Type | Prio | Projets | Bloqué par | MAJ |
 |----|-------|------|------|---------|------------|-----|
@@ -34,6 +34,7 @@ _Aucun ticket._
 | [0020](../tickets/0020-a-valider-rotation-du-journal-du-demon/ticket.md) | À valider : rotation du journal du démon | feat | p3 | daemon | — | 2026-09-17 |
 | [0021](../tickets/0021-a-valider-commande-self-update/ticket.md) | À valider : commande self-update | feat | p3 | core | — | 2026-09-17 |
 | [0022](../tickets/0022-a-valider-lister-les-tickets-prets-a-demarrer/ticket.md) | À valider : lister les tickets prêts à démarrer | feat | p3 | core, mcp | — | 2026-09-17 |
+| [0023](../tickets/0023-corriger-les-avertissements-clippy/ticket.md) | Corriger les avertissements clippy | refacto | p3 | core | — | 2026-09-17 |
 
 ## Terminé (8)
 
@@ -56,7 +57,7 @@ _Aucun ticket._
 
 | Projet | En cours | En revue | Bloqué | À faire | Terminé | Annulé |
 |--------|---|---|---|---|---|---|
-| core | 0 | 2 | 0 | 9 | 6 | 0 |
+| core | 0 | 2 | 0 | 10 | 6 | 0 |
 | daemon | 0 | 1 | 0 | 4 | 2 | 0 |
 | mcp | 0 | 0 | 0 | 4 | 2 | 0 |
 | plugin | 0 | 0 | 0 | 2 | 3 | 0 |

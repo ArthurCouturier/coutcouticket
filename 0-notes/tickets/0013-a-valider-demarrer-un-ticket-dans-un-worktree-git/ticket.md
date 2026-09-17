@@ -26,3 +26,4 @@ Proposition : `ticket_start` avec une option `worktree` qui crée `../<projet>-w
 
 ## Notes
 
+- Constaté le 2026-09-17 (0004, 0018) : `Project::name()` prend le nom du dossier racine, si bien que le titre de BOARD.md généré dans un worktree devient « Tableau des tickets — 0018 ». Prendre le nom du dépôt principal (ou une clé de config).
