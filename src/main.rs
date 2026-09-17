@@ -311,6 +311,9 @@ fn run(cli: Cli) -> Result<()> {
                     println!("  dépend de {}   ({open})", s.blocked_by.join(", "));
                 }
                 println!("  branche   {}{}", s.branch, if ctx.on_ticket_branch { " (courante)" } else { "" });
+                if let Some(e) = &ctx.git_error {
+                    println!("  ⚠️ git en échec, branche courante inconnue : {e}");
+                }
                 println!("  fichiers  {}  {}  {}", ctx.ticket_file, ctx.journal_file, ctx.decisions_file);
                 println!("  journal   {} entrée(s)   décisions {}", ctx.journal_entries, ctx.decisions);
                 println!("  prochaine étape : {}", ctx.last_next_step.as_deref().unwrap_or("—"));

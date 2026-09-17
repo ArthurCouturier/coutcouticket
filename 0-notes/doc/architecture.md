@@ -123,6 +123,27 @@ appellent le cœur, rien de plus.
   lecteur continu ne doit pas pouvoir bloquer la régénération.
 - Ignorer `BOARD.md` et les fichiers cachés (fichiers temporaires d'écriture atomique).
 
+## Appels git (`git.rs`)
+
+- Tout passe par `run` (binaire `COUTCOUTICKET_GIT_BIN`, défaut `git`) puis `failure`,
+  qui construit l'erreur : commande, code de sortie, stderr, et correction connue
+  (`known_fix` : licence Xcode → `sudo xcodebuild -license` ou
+  `sudo xcode-select -s /Library/Developer/CommandLineTools` ; outils Apple absents →
+  `xcode-select --install`). Binaire introuvable : message dédié.
+- **« Pas un dépôt » ≠ « git en échec ».** `is_repo` renvoie `Result<bool>` : faux
+  uniquement si `rev-parse` sort en 128 avec « not a git repository » (lancé avec
+  `LC_ALL=C` pour que le texte ne soit pas traduit). Tout autre échec est une erreur.
+  Piège d'origine : licence Xcode non acceptée, `/usr/bin/git` sort en 69, et l'ancien
+  `is_repo` booléen faisait croire à un dossier hors dépôt.
+- Codes attendus traités comme des réponses, pas des erreurs : `symbolic-ref --quiet`
+  sort en 1 si HEAD est détaché, `show-ref --verify --quiet` en 1 si la branche
+  n'existe pas, `check-ignore` en 1 si le chemin n'est pas ignoré.
+- Propagation : `files` et `start` échouent avec le message de git. `context`
+  (`show`, `ticket_context`) ne bloque pas : `current_branch` à null et `git_error`
+  renseigné (null si git fonctionne ; hors dépôt, les deux sont null). Le hook
+  SessionStart ajoute une ligne « git en échec ». `init` avertit et saute hooks git et
+  `.gitignore` (impossible de savoir si les notes sont suivies).
+
 ## Hooks git
 
 - Générés par `init.rs` (`hook_script`), reconnus au marqueur `# coutcouticket-hook`.
@@ -167,4 +188,7 @@ convention de dossier, sans déclaration dans le manifeste :
   le MCP stdio, et le démon HTTP (authentification, Origin, watcher sous lecture
   continue, écoute avant le watcher et journal horodaté), les hooks avec le PATH de
   launchd, le .gitignore des notes, et `setup-claude --apply` avec un faux `claude`
-  (script shell : absent, identique, différent, autre portée, échec).
+  (script shell : absent, identique, différent, autre portée, échec), et git en échec
+  avec un faux git (`COUTCOUTICKET_GIT_BIN` : licence Xcode en code 69, panne en 128,
+  binaire introuvable) comparé à un vrai dossier hors dépôt.
+- `git.rs` : message d'échec et correction Xcode testés sur des `Output` construits.

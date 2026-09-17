@@ -184,8 +184,16 @@ pub fn init(path: &Path, opts: InitOptions) -> Result<InitReport> {
     }
 
     // 7. Hooks git
-    if opts.git_hooks {
-        if git::is_repo(&root) {
+    // Un git en échec n'empêche pas l'init des notes : avertissement, et rien de ce qui en dépend.
+    let repo = match git::is_repo(&root) {
+        Ok(r) => Some(r),
+        Err(e) => {
+            report.warnings.push(format!("{e:#}\nHooks git et .gitignore non traités : relancer init une fois git réparé."));
+            None
+        }
+    };
+    if opts.git_hooks && let Some(repo) = repo {
+        if repo {
             let hooks = git::hooks_dir(&root)?;
             fs::create_dir_all(&hooks)?;
             let binary = current_binary();
@@ -227,9 +235,9 @@ pub fn init(path: &Path, opts: InitOptions) -> Result<InitReport> {
     }
 
     // 8. .gitignore : notes hors dépôt, sauf si elles sont déjà versionnées
-    if opts.gitignore {
+    if opts.gitignore && let Some(repo) = repo {
         let notes = notes_dir_rule(&project.cfg.notes_dir);
-        let tracked = git::is_repo(&root) && git::has_tracked_files(&root, &notes)?;
+        let tracked = repo && git::has_tracked_files(&root, &notes)?;
         let path = root.join(".gitignore");
         let existing = fs::read(&path).ok();
         let already = existing

@@ -174,6 +174,12 @@ coutcouticket validate
 COUTCOUTICKET_DEBUG=1 coutcouticket daemon run   # démon au premier plan, événements détaillés
 ```
 
+Git en échec : `files`, `start` et `show` citent la commande git, son code et sa sortie
+d'erreur (`ticket_context` : champ `git_error`), distincts du cas « pas un dépôt git ».
+Sous macOS, le code 69 « You have not agreed to the Xcode license agreements » se corrige
+par `sudo xcodebuild -license` (ou `sudo xcode-select -s /Library/Developer/CommandLineTools`).
+Autre binaire git : `COUTCOUTICKET_GIT_BIN`.
+
 Secours sans démon : `claude mcp add --scope user coutcouticket-stdio -- coutcouticket mcp`.
 
 Configuration globale : `~/.config/coutcouticket/` (`projects.toml`, `daemon.toml` avec
