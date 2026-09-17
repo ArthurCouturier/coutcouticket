@@ -34,7 +34,8 @@ function expired() {
 
 function render() {
   const d = state.data;
-  const shown = d.tickets.filter(t => (!state.project || t.project === state.project) && (!state.prio || t.priority === state.prio));
+  const shown = d.tickets.filter(t => (!state.project || t.project === state.project) && (!state.prio || t.priority === state.prio)
+    && (!state.status || t.status === state.status));
   const projects = [...new Set(d.tickets.map(t => t.project))];
   $('summary').textContent = `· ${shown.length} ticket(s) ouvert(s) · ${d.projects} projet(s)`;
   const f = $('filters');
