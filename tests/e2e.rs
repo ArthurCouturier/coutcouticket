@@ -377,7 +377,10 @@ fn hooks_hors_du_path() {
     fs::remove_file(&copy).unwrap();
     env.git_ok(&["commit", "-q", "--allow-empty", "-m", "repli sur le PATH"]);
     let refused = env.gui(&["commit", "-q", "--allow-empty", "-m", "introuvable"]);
-    assert!(!refused.status.success(), "commit accepté sans binaire");
+    if refused.status.success() {
+        let found = env.cmd("sh").env("PATH", &without_bin).args(["-c", "command -v coutcouticket; echo \"$PATH\""]).output().unwrap();
+        panic!("commit accepté sans binaire :\n{}\n{}\ncommand -v : {}", stderr(&refused), fs::read_to_string(&pre_commit).unwrap(), stdout(&found));
+    }
     assert!(stderr(&refused).contains("coutcouticket introuvable"), "{}", stderr(&refused));
 
     // --- hook tiers jamais modifié
@@ -1067,8 +1070,11 @@ fn hooks_git_for_windows() {
     assert!(hook.contains(&format!("cct='{noted}'")), "{hook}");
     assert!(!hook.contains('\r'), "fins de ligne CRLF dans le hook");
 
-    let bin_dir = Path::new(BIN).parent().unwrap().to_path_buf();
-    let without_bin = std::env::join_paths(std::env::split_paths(&std::env::var_os("PATH").unwrap()).filter(|d| d != &bin_dir)).unwrap();
+    // PATH sans aucun dossier contenant coutcouticket.exe.
+    let without_bin = std::env::join_paths(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap()).filter(|d| !d.join("coutcouticket.exe").exists()),
+    )
+    .unwrap();
     let git_without_bin = |args: &[&str]| env.cmd("git").env("PATH", &without_bin).args(args).output().unwrap();
 
     // --- commit hors du PATH : accepté, trailer ajouté ; branche non conforme refusée
@@ -1098,7 +1104,10 @@ fn hooks_git_for_windows() {
     assert!(out.status.success(), "commit refusé :\n{}", stderr(&out));
     fs::remove_file(&copy).unwrap();
     let refused = git_without_bin(&["commit", "-q", "--allow-empty", "-m", "introuvable"]);
-    assert!(!refused.status.success(), "commit accepté sans binaire");
+    if refused.status.success() {
+        let found = env.cmd("sh").env("PATH", &without_bin).args(["-c", "command -v coutcouticket; echo \"$PATH\""]).output().unwrap();
+        panic!("commit accepté sans binaire :\n{}\n{}\ncommand -v : {}", stderr(&refused), fs::read_to_string(&pre_commit).unwrap(), stdout(&found));
+    }
     assert!(stderr(&refused).contains("coutcouticket introuvable"), "{}", stderr(&refused));
 }
 
@@ -1140,9 +1149,11 @@ fn daemon_tache_planifiee_windows() {
     assert!(stdout(&out).contains(&format!("tâche planifiée « {TASK} »")), "{}", stdout(&out));
     let (exists, xml) = schtasks_query(TASK);
     assert!(exists, "tâche absente après install");
-    for needle in ["LogonTrigger", "LeastPrivilege", "InteractiveToken", "--headless", "daemon run --log-file", "PT0S"] {
+    // RunLevel LeastPrivilege est la valeur par défaut : absente de l'export.
+    for needle in ["<LogonTrigger>", "InteractiveToken", "--headless", "daemon run --log-file", "PT0S", "<Priority>5</Priority>"] {
         assert!(xml.contains(needle), "{needle} absent :\n{xml}");
     }
+    assert!(!xml.contains("HighestAvailable"), "tâche élevée :\n{xml}");
     assert!(wait_status().contains("ok"));
     let log_dir = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("coutcouticket");
     let first_pid = fs::read_to_string(log_dir.join("daemon.pid")).unwrap();
