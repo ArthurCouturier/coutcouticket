@@ -36,8 +36,10 @@ appellent le cœur, rien de plus.
   peuvent tourner en même temps.
 - **`BOARD.md` est déterministe** : aucun horodatage, écrit seulement si le contenu
   change. Sinon bruit git et boucle avec le watcher.
-- **Le frontmatter n'accepte que les 8 clés connues.** Ajouter un champ = modifier
-  `FRONTMATTER_KEYS`, `Frontmatter`, `render` et le parse ensemble.
+- **Le frontmatter n'accepte que les 9 clés connues.** Ajouter un champ = modifier
+  `FRONTMATTER_KEYS`, `Frontmatter`, `render` et le parse ensemble. Une clé optionnelle
+  (comme `blocked_by`) n'est écrite que si elle a une valeur : les tickets existants
+  ne changent pas.
 - **Suffixe de branche = nom de dossier**, sans conversion.
 - **`init` ne réécrit jamais un contenu utilisateur** : `create_if_missing` partout,
   sauf le bloc balisé de `CLAUDE.md` et les hooks portant le marqueur coutcouticket.
@@ -49,6 +51,29 @@ appellent le cœur, rien de plus.
   Piège de la migration (`git rm -r --cached`) : git considère les fichiers ignorés comme
   jetables. Basculer vers un commit qui suit encore les notes les écrase, et le retour
   les supprime. L'avertissement d'`init` le signale.
+
+## Dépendances entre tickets
+
+- `blocked_by: ["0003", "0007"]` dans le frontmatter, optionnel (absent = aucune).
+  Parse tolérant (`3`, `#3`, `'0003'`), liste toujours triée et dédoublonnée
+  (`model::normalize_ids`), réécrite sur `id_width` chiffres.
+- Écriture : `Project::create` (`CreateInput.blocked_by`) et `Project::depend`
+  (ajout ou retrait, entrée « dépendances » dans le journal). Façades :
+  `new --blocked-by`, `depend <id> --on <ids> [--remove]`, MCP `ticket_create.blocked_by`
+  et `ticket_depend`.
+- Contrôles à l'écriture (`check_new_dependencies`) : ids existants, pas
+  d'auto-référence, pas de cycle (`find_path` du nouveau prérequis vers le ticket).
+  Le retrait ne vérifie pas l'existence : il sert à réparer un id inconnu.
+- Contrôles à la lecture : `scan` ajoute aux problèmes les ids inconnus, les
+  auto-références et chaque cycle une fois (`find_cycles`), avec la commande de
+  correction. Ils apparaissent donc dans `validate`, `BOARD.md` et le contexte de session.
+- « Bloquant » = dépendance existante dont le statut est ouvert
+  (`Project::open_blockers`). `TicketSummary` expose `blocked_by` et `open_blockers`
+  (`list`, `show`, `ticket_context`, retour des outils d'écriture).
+- `BOARD.md` : colonne « Bloqué par » (liens) dans les sections de statut ouvert
+  uniquement. Le statut `blocked` reste manuel et indépendant des dépendances.
+- `start` n'est pas refusé sur un ticket bloqué : la CLI avertit, le hook
+  SessionStart signale les dépendances ouvertes du ticket de la branche courante.
 
 ## Démon
 
@@ -113,9 +138,10 @@ appellent le cœur, rien de plus.
 ## Tests
 
 - Unitaires dans chaque module (`cargo test`).
+- `store.rs` : tests du cœur sur un projet temporaire sans git (dépendances, cycles, board).
 - `tests/e2e.rs` : binaire réel dans un dépôt git temporaire, avec
-  `COUTCOUTICKET_HOME` isolé. Couvre le workflow et les hooks, le MCP stdio, et le
-  démon HTTP (authentification, Origin, watcher sous lecture continue, écoute avant
-  le watcher et journal horodaté), les hooks avec le PATH de launchd, le .gitignore
-  des notes, et `setup-claude --apply` avec un faux `claude` (script shell : absent,
-  identique, différent, autre portée, échec).
+  `COUTCOUTICKET_HOME` isolé. Couvre le workflow et les hooks, les dépendances (CLI),
+  le MCP stdio, et le démon HTTP (authentification, Origin, watcher sous lecture
+  continue, écoute avant le watcher et journal horodaté), les hooks avec le PATH de
+  launchd, le .gitignore des notes, et `setup-claude --apply` avec un faux `claude`
+  (script shell : absent, identique, différent, autre portée, échec).

@@ -127,6 +127,11 @@ pub fn session_context(project: &Project) -> Result<String> {
                             t.doc.front.title,
                             t.doc.front.status
                         ));
+                        let blockers = project.open_blockers(t, &scan.tickets);
+                        if !blockers.is_empty() {
+                            let ids: Vec<String> = blockers.iter().map(|b| b.format(project.cfg.id_width)).collect();
+                            lines.push(format!("⚠️ Ticket bloqué par des tickets encore ouverts : {}.", ids.join(", ")));
+                        }
                         if let Some(next) = last_next_step(&journal) {
                             lines.push(format!("Prochaine étape notée : {next}"));
                         }

@@ -190,6 +190,49 @@ fn workflow_complet() {
     assert!(text.contains("Gérer l'état vide"), "{text}");
 }
 
+#[test]
+fn dependances_cli() {
+    let env = Env::new();
+    env.ok(&["init"]);
+    env.ok(&["new", "-t", "Socle"]);
+    env.ok(&["new", "-t", "Écran"]);
+    let out = env.ok(&["new", "-t", "Export", "--blocked-by", "2,#1"]);
+    assert!(out.contains("Bloqué par : 0001, 0002"), "{out}");
+    let refused = env.cct(&["new", "-t", "Orphelin", "--blocked-by", "9"]);
+    assert!(!refused.status.success());
+    assert!(stderr(&refused).contains("0009 introuvable"), "{}", stderr(&refused));
+
+    // cycle refusé, ajout et retrait
+    let cycle = env.cct(&["depend", "1", "--on", "3"]);
+    assert!(!cycle.status.success());
+    assert!(stderr(&cycle).contains("cycle 0001 → 0003 → 0001"), "{}", stderr(&cycle));
+    let out = env.ok(&["depend", "2", "--on", "1"]);
+    assert!(out.contains("dépendances 0001 (encore ouvertes : 0001)"), "{out}");
+    env.ok(&["depend", "3", "--on", "2", "--remove"]);
+    let show = env.ok(&["show", "3", "--json"]);
+    assert!(show.contains("\"blocked_by\": [\n    \"0001\"\n  ]"), "{show}");
+
+    // une dépendance terminée ne bloque plus
+    let list = env.ok(&["list"]);
+    assert!(list.contains("(bloqué par 0001)"), "{list}");
+    env.ok(&["status", "1", "done"]);
+    let list = env.ok(&["list", "--json"]);
+    assert!(list.contains("\"open_blockers\": []") && !list.contains("\"open_blockers\": [\n"), "{list}");
+    let board = fs::read_to_string(env.notes().join("0-global/BOARD.md")).unwrap();
+    assert!(board.contains("| Bloqué par |"), "{board}");
+    env.ok(&["validate"]);
+
+    // édition manuelle incohérente détectée par validate
+    let ticket = env.notes().join("tickets/0001-socle/ticket.md");
+    let original = fs::read_to_string(&ticket).unwrap();
+    fs::write(&ticket, original.replace("projects: []", "projects: []\nblocked_by: [3]")).unwrap();
+    let invalid = env.cct(&["validate"]);
+    assert!(stdout(&invalid).contains("cycle de dépendances : 0001 → 0003 → 0001"), "{}", stdout(&invalid));
+    fs::write(&ticket, original).unwrap();
+    env.ok(&["board"]);
+    env.ok(&["validate"]);
+}
+
 // ---------------------------------------------------------------------------
 // Hooks git hors du terminal (client graphique : PATH de launchd)
 // ---------------------------------------------------------------------------
@@ -300,7 +343,7 @@ fn mcp_stdio() {
     send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}));
     let tools = recv(&mut reader, 2);
     let names: Vec<String> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
-    for expected in ["ticket_create", "ticket_start", "ticket_set_status", "ticket_log", "ticket_decide", "ticket_list", "ticket_context", "ticket_files", "notes_validate"] {
+    for expected in ["ticket_create", "ticket_start", "ticket_set_status", "ticket_log", "ticket_decide", "ticket_list", "ticket_context", "ticket_files", "notes_validate", "ticket_depend"] {
         assert!(names.contains(&expected.to_string()), "outil {expected} absent : {names:?}");
     }
     let status_schema = tools["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "ticket_set_status").unwrap().to_string();
@@ -314,6 +357,19 @@ fn mcp_stdio() {
     send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ticket_set_status","arguments":{"project":repo,"id":"1","status":"en cours"}}}));
     let invalid = recv(&mut reader, 4).to_string();
     assert!(invalid.contains("error") || invalid.contains("isError"), "statut invalide accepté : {invalid}");
+
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"ticket_create","arguments":{"project":repo,"title":"Dépendant","blocked_by":["1"]}}}));
+    let dependent = recv(&mut reader, 6).to_string();
+    assert!(dependent.contains("open_blockers") && dependent.contains("0001"), "{dependent}");
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"ticket_depend","arguments":{"project":repo,"id":"1","on":["2"]}}}));
+    let cycle = recv(&mut reader, 7).to_string();
+    assert!(cycle.contains("isError") && cycle.contains("cycle"), "cycle accepté : {cycle}");
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"ticket_depend","arguments":{"project":repo,"id":"2","on":["1"],"remove":true}}}));
+    let removed = recv(&mut reader, 8).to_string();
+    assert!(removed.contains("blocked_by") && !removed.contains("isError\":true"), "{removed}");
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"ticket_context","arguments":{"project":repo,"id":"2"}}}));
+    let ctx = recv(&mut reader, 9).to_string();
+    assert!(ctx.contains("open_blockers"), "{ctx}");
 
     send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"notes_validate","arguments":{"project":repo}}}));
     let valid = recv(&mut reader, 5).to_string();

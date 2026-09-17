@@ -31,6 +31,7 @@ agir. Ne refais jamais à la main ce qu'un outil fait.
 | noter une avancée ou s'arrêter | procédure **Journaliser** |
 | trancher entre plusieurs options | procédure **Décider** |
 | signaler un blocage | `ticket_set_status` → `blocked`, `note` = cause et ce qui débloquerait |
+| indiquer qu'un ticket en attend un autre | `ticket_depend` (`id` = celui qui attend, `on` = prérequis ; `remove: true` pour retirer) |
 | faire relire | `ticket_set_status` → `review`, `note` = quoi relire et comment tester |
 | terminer | procédure **Clôturer** |
 | comprendre une partie du code | `0-notes/doc/INDEX.md`, puis la page indiquée |
@@ -52,6 +53,8 @@ agir. Ne refais jamais à la main ce qu'un outil fait.
    - `description` : contexte, problème, objectif. Assez pour qu'un autre développeur
      (ou toi dans trois semaines) comprenne sans la conversation.
    - `acceptance` : critères observables et testables. Pas « ça marche bien ».
+   - `blocked_by` : ids des tickets à terminer avant celui-ci, s'il y en a
+     (découpage en étapes). Jamais de dépendance « au cas où ».
 4. Annoncer l'id et la branche retournés. **Ne pas démarrer** sans demande explicite.
 
 ## Démarrer / reprendre
@@ -113,6 +116,6 @@ Dans cet ordre, sans en sauter :
 ## Si le MCP est indisponible
 
 La CLI fait exactement la même chose :
-`coutcouticket new|start|status|log|decide|list|show|files|board|validate` (voir
+`coutcouticket new|start|status|depend|log|decide|list|show|files|board|validate` (voir
 `coutcouticket --help`). Démon arrêté : `coutcouticket daemon status` pour
 diagnostiquer, et le signaler à l'utilisateur.

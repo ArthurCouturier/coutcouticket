@@ -67,6 +67,19 @@ enum Cmd {
         /// Critère d'acceptation (répétable).
         #[arg(long = "accept", short = 'a')]
         acceptance: Vec<String>,
+        /// Tickets dont celui-ci dépend, séparés par des virgules (ex. 3,7).
+        #[arg(long = "blocked-by", value_delimiter = ',')]
+        blocked_by: Vec<String>,
+    },
+    /// Ajoute (ou retire) des dépendances : <id> est bloqué par les tickets --on.
+    Depend {
+        id: String,
+        /// Tickets dont <id> dépend, séparés par des virgules (ex. 3,7).
+        #[arg(long, value_delimiter = ',', required = true)]
+        on: Vec<String>,
+        /// Retire ces dépendances au lieu de les ajouter.
+        #[arg(long)]
+        remove: bool,
     },
     /// Démarre un ticket : branche <type>/<id>-<slug> + statut in-progress.
     Start { id: String },
@@ -197,6 +210,10 @@ fn project(cli_path: &Option<PathBuf>) -> Result<Project> {
     resolve_project(s.as_deref())
 }
 
+fn parse_ids(ids: &[String]) -> Result<Vec<TicketId>> {
+    ids.iter().map(|s| TicketId::parse(s)).collect()
+}
+
 fn runtime() -> Result<tokio::runtime::Runtime> {
     Ok(tokio::runtime::Builder::new_current_thread().enable_all().build()?)
 }
@@ -220,7 +237,7 @@ fn run(cli: Cli) -> Result<()> {
             )?;
             print!("{}", report.render());
         }
-        Cmd::New { title, kind, priority, projects, description, acceptance } => {
+        Cmd::New { title, kind, priority, projects, description, acceptance, blocked_by } => {
             let s = project(p)?.create(CreateInput {
                 title,
                 kind,
@@ -228,8 +245,18 @@ fn run(cli: Cli) -> Result<()> {
                 projects,
                 description,
                 acceptance,
+                blocked_by: parse_ids(&blocked_by)?,
             })?;
             println!("Ticket {} créé : {}\nBranche à utiliser : {}", s.id, s.dir, s.branch);
+            if !s.open_blockers.is_empty() {
+                println!("Bloqué par : {}", s.open_blockers.join(", "));
+            }
+        }
+        Cmd::Depend { id, on, remove } => {
+            let s = project(p)?.depend(TicketId::parse(&id)?, &parse_ids(&on)?, remove)?;
+            let deps = if s.blocked_by.is_empty() { "aucune".to_string() } else { s.blocked_by.join(", ") };
+            let open = if s.open_blockers.is_empty() { "aucune".to_string() } else { s.open_blockers.join(", ") };
+            println!("Ticket {} : dépendances {deps} (encore ouvertes : {open}).", s.id);
         }
         Cmd::Start { id } => {
             let (s, created) = project(p)?.start(TicketId::parse(&id)?)?;
@@ -239,6 +266,9 @@ fn run(cli: Cli) -> Result<()> {
                 s.branch,
                 if created { "créée" } else { "existante" }
             );
+            if !s.open_blockers.is_empty() {
+                println!("Attention : ce ticket est bloqué par des tickets encore ouverts : {}.", s.open_blockers.join(", "));
+            }
         }
         Cmd::Status { id, status, note } => {
             let s = project(p)?.set_status(TicketId::parse(&id)?, status.parse::<Status>()?, note.as_deref())?;
@@ -262,7 +292,8 @@ fn run(cli: Cli) -> Result<()> {
             } else {
                 for t in list {
                     let projects = if t.projects.is_empty() { String::new() } else { format!(" [{}]", t.projects.join(", ")) };
-                    println!("{}  {:<11} {} {:<7} {}{}", t.id, t.status.as_str(), t.priority, t.kind, t.title, projects);
+                    let blockers = if t.open_blockers.is_empty() { String::new() } else { format!("  (bloqué par {})", t.open_blockers.join(", ")) };
+                    println!("{}  {:<11} {} {:<7} {}{}{}", t.id, t.status.as_str(), t.priority, t.kind, t.title, projects, blockers);
                 }
             }
         }
@@ -275,6 +306,10 @@ fn run(cli: Cli) -> Result<()> {
                 println!("{} « {} »", s.id, s.title);
                 println!("  statut    {}   priorité {}   type {}", s.status, s.priority, s.kind);
                 println!("  projets   {}", if s.projects.is_empty() { "—".into() } else { s.projects.join(", ") });
+                if !s.blocked_by.is_empty() {
+                    let open = if s.open_blockers.is_empty() { "aucune ouverte".to_string() } else { format!("ouvertes : {}", s.open_blockers.join(", ")) };
+                    println!("  dépend de {}   ({open})", s.blocked_by.join(", "));
+                }
                 println!("  branche   {}{}", s.branch, if ctx.on_ticket_branch { " (courante)" } else { "" });
                 println!("  fichiers  {}  {}  {}", ctx.ticket_file, ctx.journal_file, ctx.decisions_file);
                 println!("  journal   {} entrée(s)   décisions {}", ctx.journal_entries, ctx.decisions);

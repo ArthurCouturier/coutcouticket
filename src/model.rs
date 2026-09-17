@@ -12,8 +12,8 @@ use chrono::NaiveDate;
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 
-pub const FRONTMATTER_KEYS: [&str; 8] = [
-    "id", "title", "type", "status", "priority", "projects", "created", "updated",
+pub const FRONTMATTER_KEYS: [&str; 9] = [
+    "id", "title", "type", "status", "priority", "projects", "blocked_by", "created", "updated",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
@@ -154,6 +154,9 @@ pub struct Frontmatter {
     pub status: Status,
     pub priority: Priority,
     pub projects: Vec<String>,
+    /// Tickets dont celui-ci dépend. Clé optionnelle : absente = aucune dépendance.
+    /// Toujours triée et sans doublon.
+    pub blocked_by: Vec<TicketId>,
     pub created: NaiveDate,
     pub updated: NaiveDate,
 }
@@ -172,14 +175,22 @@ fn quote(s: &str) -> String {
 impl Frontmatter {
     pub fn render(&self, id_width: usize) -> String {
         let projects = self.projects.join(", ");
+        // Écrite seulement si non vide : les tickets sans dépendance gardent leur forme d'origine.
+        let blocked_by = if self.blocked_by.is_empty() {
+            String::new()
+        } else {
+            let ids: Vec<String> = self.blocked_by.iter().map(|id| format!("\"{}\"", id.format(id_width))).collect();
+            format!("blocked_by: [{}]\n", ids.join(", "))
+        };
         format!(
-            "---\nid: \"{}\"\ntitle: {}\ntype: {}\nstatus: {}\npriority: {}\nprojects: [{}]\ncreated: {}\nupdated: {}\n---\n",
+            "---\nid: \"{}\"\ntitle: {}\ntype: {}\nstatus: {}\npriority: {}\nprojects: [{}]\n{}created: {}\nupdated: {}\n---\n",
             self.id.format(id_width),
             quote(&self.title),
             self.kind,
             self.status,
             self.priority,
             projects,
+            blocked_by,
             self.created.format("%Y-%m-%d"),
             self.updated.format("%Y-%m-%d"),
         )
@@ -218,17 +229,33 @@ fn parse_scalar(raw: &str) -> Result<String> {
     }
 }
 
-fn parse_list(raw: &str) -> Result<Vec<String>> {
+fn parse_list(key: &str, example: &str, raw: &str) -> Result<Vec<String>> {
     let raw = raw.trim();
     let inner = raw
         .strip_prefix('[')
         .and_then(|r| r.strip_suffix(']'))
-        .ok_or_else(|| anyhow!("« projects » doit être une liste entre crochets, ex. [backend, app]"))?;
+        .ok_or_else(|| anyhow!("« {key} » doit être une liste entre crochets, ex. {example}"))?;
     Ok(inner
         .split(',')
         .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
         .filter(|s| !s.is_empty())
         .collect())
+}
+
+/// Normalise une liste d'identifiants : triée, sans doublon.
+pub fn normalize_ids(ids: &mut Vec<TicketId>) {
+    ids.sort();
+    ids.dedup();
+}
+
+fn parse_blocked_by(raw: Option<&str>) -> Result<Vec<TicketId>> {
+    let Some(raw) = raw else { return Ok(Vec::new()) };
+    let mut ids = parse_list("blocked_by", "[\"0003\", \"0007\"]", raw)?
+        .iter()
+        .map(|s| TicketId::parse(s).with_context(|| "« blocked_by » contient un identifiant invalide"))
+        .collect::<Result<Vec<_>>>()?;
+    normalize_ids(&mut ids);
+    Ok(ids)
 }
 
 fn parse_date(key: &str, raw: &str) -> Result<NaiveDate> {
@@ -278,7 +305,8 @@ fn parse_frontmatter_block(block: &str) -> Result<Frontmatter> {
         kind,
         status: parse_scalar(get("status")?)?.parse()?,
         priority: parse_scalar(get("priority")?)?.parse()?,
-        projects: parse_list(get("projects")?)?,
+        projects: parse_list("projects", "[backend, app]", get("projects")?)?,
+        blocked_by: parse_blocked_by(map.iter().find(|(k, _)| k == "blocked_by").map(|(_, v)| v.as_str()))?,
         created: parse_date("created", get("created")?)?,
         updated: parse_date("updated", get("updated")?)?,
     })
@@ -297,6 +325,7 @@ mod tests {
                 status: Status::InProgress,
                 priority: Priority::P1,
                 projects: vec!["backend".into(), "app".into()],
+                blocked_by: vec![],
                 created: NaiveDate::from_ymd_opt(2026, 9, 17).unwrap(),
                 updated: NaiveDate::from_ymd_opt(2026, 9, 18).unwrap(),
             },
@@ -312,6 +341,34 @@ mod tests {
         let parsed = TicketDoc::parse(&text).unwrap();
         assert_eq!(parsed.front, doc.front);
         assert_eq!(parsed.body, doc.body);
+    }
+
+    #[test]
+    fn blocked_by_absent_ou_vide() {
+        let text = sample().render(4);
+        assert!(!text.contains("blocked_by"), "clé écrite alors que la liste est vide : {text}");
+        assert!(TicketDoc::parse(&text).unwrap().front.blocked_by.is_empty());
+        let empty = text.replace("projects: [backend, app]", "projects: [backend, app]\nblocked_by: []");
+        assert!(TicketDoc::parse(&empty).unwrap().front.blocked_by.is_empty());
+    }
+
+    #[test]
+    fn blocked_by_normalise() {
+        let text = sample().render(4).replace("projects: [backend, app]", "projects: [backend, app]\nblocked_by: [7, \"#3\", '0007', \"0012\"]");
+        let doc = TicketDoc::parse(&text).unwrap();
+        assert_eq!(doc.front.blocked_by, vec![TicketId(3), TicketId(7), TicketId(12)]);
+        let rendered = doc.render(4);
+        assert!(rendered.contains("projects: [backend, app]\nblocked_by: [\"0003\", \"0007\", \"0012\"]\ncreated:"), "{rendered}");
+        assert_eq!(TicketDoc::parse(&rendered).unwrap().front, doc.front);
+    }
+
+    #[test]
+    fn blocked_by_invalide() {
+        let base = sample().render(4);
+        let err = TicketDoc::parse(&base.replace("priority: p1", "priority: p1\nblocked_by: [abc]")).unwrap_err();
+        assert!(format!("{err:#}").contains("blocked_by"), "{err:#}");
+        let err = TicketDoc::parse(&base.replace("priority: p1", "priority: p1\nblocked_by: 0003")).unwrap_err();
+        assert!(err.to_string().contains("entre crochets"), "{err}");
     }
 
     #[test]

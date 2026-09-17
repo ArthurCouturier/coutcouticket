@@ -12,7 +12,7 @@ conçu pour travailler avec Claude Code sans friction.
 
 ```
 coutcouticket (binaire unique, ~5 Mo)
-├── CLI           init, new, start, status, log, decide, list, show, files, board, validate
+├── CLI           init, new, start, status, depend, log, decide, list, show, files, board, validate
 ├── mcp           serveur MCP stdio (secours)
 ├── daemon run    serveur MCP HTTP 127.0.0.1 + surveillance des notes (LaunchAgent)
 └── hook          pre-commit, prepare-commit-msg, session-start
@@ -137,14 +137,20 @@ comment sortir les notes du dépôt (`git rm -r --cached 0-notes`).
 | Trailer de commit | `Ticket: 0013` (ajouté automatiquement) |
 | Statuts | todo, in-progress, blocked, review, done, cancelled |
 | Priorités | p0 … p3 |
+| Dépendances | `blocked_by: ["0003"]`, via `new --blocked-by 3` ou `depend 13 --on 3 [--remove]` |
+
+Dépendances : un ticket ouvert affiche dans `BOARD.md` (colonne « Bloqué par ») ses
+dépendances encore ouvertes ; une dépendance `done` ou `cancelled` ne bloque plus.
+`list`, `show` et `ticket_context` exposent `blocked_by` et `open_blockers`.
 
 ## Outils MCP
 
 | Outil | Rôle |
 |---|---|
-| `ticket_create` | crée le ticket (id suivant, dossier, fichiers, board) |
+| `ticket_create` | crée le ticket (id suivant, dossier, fichiers, board), dépendances optionnelles |
 | `ticket_start` | bascule/crée la branche, passe en `in-progress` |
 | `ticket_set_status` | change le statut, consigné dans le journal |
+| `ticket_depend` | ajoute ou retire des dépendances (`blocked_by`), refuse ids inconnus et cycles |
 | `ticket_log` | entrée d'avancement, « prochaine étape » obligatoire |
 | `ticket_decide` | décision structurée |
 | `ticket_list` | liste filtrable |

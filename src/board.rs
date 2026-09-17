@@ -11,12 +11,14 @@ fn cell(s: &str) -> String {
     s.replace('|', "\\|").replace('\n', " ")
 }
 
-fn row(p: &Project, t: &Ticket) -> String {
+/// `blockers` : `Some` pour les tickets ouverts (colonne « Bloqué par »), `None` sinon.
+fn row(p: &Project, t: &Ticket, blockers: Option<String>) -> String {
     let f = &t.doc.front;
     let id = f.id.format(p.cfg.id_width);
     let projects = if f.projects.is_empty() { "—".to_string() } else { f.projects.join(", ") };
+    let blockers = blockers.map(|b| format!(" {b} |")).unwrap_or_default();
     format!(
-        "| [{id}](../tickets/{}/ticket.md) | {} | {} | {} | {} | {} |\n",
+        "| [{id}](../tickets/{}/ticket.md) | {} | {} | {} | {} |{blockers} {} |\n",
         t.dir_name,
         cell(&f.title),
         f.kind,
@@ -24,6 +26,18 @@ fn row(p: &Project, t: &Ticket) -> String {
         cell(&projects),
         f.updated.format("%Y-%m-%d")
     )
+}
+
+/// Dépendances encore ouvertes, en liens vers leur ticket. Une dépendance
+/// terminée ou annulée ne bloque plus et n'apparaît pas.
+fn blockers_cell(p: &Project, t: &Ticket, scan: &Scan) -> String {
+    let links: Vec<String> = p
+        .open_blockers(t, &scan.tickets)
+        .iter()
+        .filter_map(|id| scan.tickets.iter().find(|o| o.doc.front.id == *id))
+        .map(|o| format!("[{}](../tickets/{}/ticket.md)", o.doc.front.id.format(p.cfg.id_width), o.dir_name))
+        .collect();
+    if links.is_empty() { "—".into() } else { links.join(", ") }
 }
 
 pub fn render(p: &Project, scan: &Scan) -> String {
@@ -61,9 +75,14 @@ pub fn render(p: &Project, scan: &Scan) -> String {
             out.push_str("_Aucun ticket._\n\n");
             continue;
         }
-        out.push_str("| ID | Titre | Type | Prio | Projets | MAJ |\n|----|-------|------|------|---------|-----|\n");
+        if status.is_open() {
+            out.push_str("| ID | Titre | Type | Prio | Projets | Bloqué par | MAJ |\n|----|-------|------|------|---------|------------|-----|\n");
+        } else {
+            out.push_str("| ID | Titre | Type | Prio | Projets | MAJ |\n|----|-------|------|------|---------|-----|\n");
+        }
         for t in list {
-            out.push_str(&row(p, t));
+            let blockers = status.is_open().then(|| blockers_cell(p, t, scan));
+            out.push_str(&row(p, t, blockers));
         }
         out.push('\n');
     }
