@@ -48,7 +48,7 @@ jobs:
           rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
           rustup default stable
 
-      - name: Vérifier que le tag correspond à la version de Cargo.toml
+      - name: Version (et contrôle du tag sur un push de tag)
         id: version
         run: |
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "${{ inputs.essai }}" != "true" ]; then
