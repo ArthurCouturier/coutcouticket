@@ -16,3 +16,18 @@ release.yml : upload-artifact v4→v7, download-artifact v4→v8 (runs.using nod
 ## 2026-09-17 16:22 — statut : in-progress → review
 
 Relecture de clôture faite : rien ne bloque la revue (étape de version renommée ensuite pour refléter le mode essai). Reste à vérifier sur GitHub : git push -u origin ci/0024-passer-les-actions-artifact-de-la-release-a-node puis gh workflow run release.yml --ref ci/0024-passer-les-actions-artifact-de-la-release-a-node -f essai=true (si GitHub refuse faute de workflow_dispatch sur main : fusionner d'abord puis --ref main). Attendu : run vert, étape « Publier la release GitHub » sautée, aucune release créée, aucune annotation Node 20 (gh run view <id>). Ensuite cocher les deux critères, journaliser l'id du run avec next_step Aucune, passer en done. Au merge : conflit probable sur le tableau de 0-notes/doc/distribution.md (garder la ligne CI de main et la ligne Release de 0024).
+
+## 2026-09-17 16:26 — avancement
+
+Fusionné sur main et poussé. Essai lancé avec `gh workflow run release.yml --ref main -f essai=true` (run 35233148603) : vert.
+- Jobs `build (aarch64-apple-darwin)`, `build (x86_64-apple-darwin)` et `release` réussis.
+- « Assembler et vérifier les sommes SHA-256 » réussi, « Publier la release GitHub » sauté (skipped).
+- Aucune nouvelle release : v0.1.0 reste la dernière.
+- Seules annotations : les notices « Essai sur main… ». Plus d'avertissement Node 20.
+La CI de main (run 35233139661, avec clippy) est verte aussi.
+
+**Prochaine étape :** Aucune
+
+## 2026-09-17 16:27 — statut : review → done
+
+Actions artifact passées à Node 24 (upload v7, download v8). L'essai de release manuel, sans publication, passe (run 35233148603). Relecture de clôture : OK.

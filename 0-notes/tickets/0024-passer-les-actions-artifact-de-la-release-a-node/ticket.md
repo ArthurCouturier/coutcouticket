@@ -2,7 +2,7 @@
 id: "0024"
 title: "Passer les actions artifact de la release à Node 24"
 type: ci
-status: review
+status: done
 priority: p3
 projects: [core]
 created: 2026-09-17
@@ -15,8 +15,8 @@ Le run de release v0.1.0 (35231556877) affiche un avertissement : `actions/uploa
 
 ## Critères d'acceptation
 
-- [ ] Le workflow release ne montre plus d'avertissement Node 20
-- [ ] Une release de test (tag de préversion ou workflow_dispatch) passe
+- [x] Le workflow release ne montre plus d'avertissement Node 20
+- [x] Une release de test (tag de préversion ou workflow_dispatch) passe
 
 ## Notes
 
