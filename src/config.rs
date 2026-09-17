@@ -136,10 +136,10 @@ pub fn global_dir() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("COUTCOUTICKET_HOME") {
         return Ok(PathBuf::from(dir));
     }
-    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        if !xdg.is_empty() {
-            return Ok(PathBuf::from(xdg).join("coutcouticket"));
-        }
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME")
+        && !xdg.is_empty()
+    {
+        return Ok(PathBuf::from(xdg).join("coutcouticket"));
     }
     let home = std::env::var("HOME").map_err(|_| anyhow!("variable HOME absente"))?;
     Ok(PathBuf::from(home).join(".config").join("coutcouticket"))

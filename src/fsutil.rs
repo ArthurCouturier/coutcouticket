@@ -23,10 +23,10 @@ pub fn write_atomic(path: &Path, content: &str) -> Result<()> {
 /// Écrit seulement si le contenu change. Retourne true si le fichier a été écrit.
 /// Évite le bruit git et les boucles avec le watcher du démon.
 pub fn write_if_changed(path: &Path, content: &str) -> Result<bool> {
-    if let Ok(existing) = fs::read_to_string(path) {
-        if existing == content {
-            return Ok(false);
-        }
+    if let Ok(existing) = fs::read_to_string(path)
+        && existing == content
+    {
+        return Ok(false);
     }
     write_atomic(path, content)?;
     Ok(true)

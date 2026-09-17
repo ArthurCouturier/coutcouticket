@@ -386,10 +386,10 @@ impl Project {
         if rest == "0-global/BOARD.md" {
             return PathOwner::Board;
         }
-        if let Some((dir, file)) = rest.strip_prefix("tickets/").and_then(|r| r.split_once('/')) {
-            if let Some((id, _)) = naming::parse_dir_name(dir, &self.cfg).filter(|_| !file.is_empty()) {
-                return PathOwner::Ticket(id);
-            }
+        if let Some((dir, file)) = rest.strip_prefix("tickets/").and_then(|r| r.split_once('/'))
+            && let Some((id, _)) = naming::parse_dir_name(dir, &self.cfg).filter(|_| !file.is_empty())
+        {
+            return PathOwner::Ticket(id);
         }
         PathOwner::Notes
     }

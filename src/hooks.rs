@@ -25,26 +25,26 @@ pub fn pre_commit() -> Result<()> {
         eprintln!("coutcouticket : aucun .coutcouticket.toml trouvé, vérifications ignorées");
         return Ok(());
     };
-    if let Some(branch) = git::current_branch(&project.root)? {
-        if let BranchKind::Ticket { kind, id, dir } = naming::classify_branch(&branch, &project.cfg)? {
-            let ticket = project.find(id).map_err(|e| {
-                anyhow::anyhow!("branche « {branch} » : {e:#}. Créer le ticket d'abord (ticket_create) puis utiliser ticket_start.")
-            })?;
-            if ticket.dir_name != dir {
-                bail!(
-                    "branche « {branch} » : le dossier du ticket {} est « {} ». Branche attendue : {}",
-                    id.format(project.cfg.id_width),
-                    ticket.dir_name,
-                    naming::branch_name(&ticket.doc.front.kind, &ticket.dir_name)
-                );
-            }
-            if ticket.doc.front.kind != kind {
-                bail!(
-                    "branche « {branch} » : le ticket est de type « {} », branche attendue : {}",
-                    ticket.doc.front.kind,
-                    naming::branch_name(&ticket.doc.front.kind, &ticket.dir_name)
-                );
-            }
+    if let Some(branch) = git::current_branch(&project.root)?
+        && let BranchKind::Ticket { kind, id, dir } = naming::classify_branch(&branch, &project.cfg)?
+    {
+        let ticket = project.find(id).map_err(|e| {
+            anyhow::anyhow!("branche « {branch} » : {e:#}. Créer le ticket d'abord (ticket_create) puis utiliser ticket_start.")
+        })?;
+        if ticket.dir_name != dir {
+            bail!(
+                "branche « {branch} » : le dossier du ticket {} est « {} ». Branche attendue : {}",
+                id.format(project.cfg.id_width),
+                ticket.dir_name,
+                naming::branch_name(&ticket.doc.front.kind, &ticket.dir_name)
+            );
+        }
+        if ticket.doc.front.kind != kind {
+            bail!(
+                "branche « {branch} » : le ticket est de type « {} », branche attendue : {}",
+                ticket.doc.front.kind,
+                naming::branch_name(&ticket.doc.front.kind, &ticket.dir_name)
+            );
         }
     }
     if project.regenerate_board()? {
