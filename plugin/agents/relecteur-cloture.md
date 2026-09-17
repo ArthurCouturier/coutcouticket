@@ -21,7 +21,7 @@ en remontant depuis le dossier courant jusqu'à `.coutcouticket.toml`.
 Aucune écriture de fichier, aucune commande qui change un état. Bash sert uniquement à :
 - `coutcouticket -C <racine> show <id>`, `files <id>`, `validate`, `list` ;
 - git en lecture : `git -C <racine> status`, `log`, `diff`, `show`, `branch --show-current`,
-  `rev-parse`, `ls-files` ;
+  `branch --contains`, `merge-base`, `rev-parse`, `ls-files` ;
 - lire et chercher : `ls`, `rg`, `grep`, `cat`, `sed -n`, `head`, `tail` ;
 - relancer une commande de test **seulement** si elle est citée comme preuve dans le
   journal et qu'elle n'écrit que dans des dossiers de build (ex. `cargo test`). Dans le
@@ -40,7 +40,8 @@ switch/reset/stash/push`, ni aucune édition. Les corrections sont pour la sessi
    du ticket et fichiers non commités). Lire les fichiers de code ou de doc pertinents,
    et `git -C <racine> diff` / `git log` pour voir le détail si besoin.
    **Si une commande git (ou `files`, qui appelle git) échoue** : ne pas conclure sur le
-   diff. Recopier le message d'erreur et son code de sortie dans la section « Git » du
+   diff. Recopier la commande lancée, son message d'erreur et son code de sortie tels
+   quels (coutcouticket traduit parfois l'échec de git en son propre message) dans la section « Git » du
    verdict, marquer les critères qui dépendaient du diff « non vérifiable », et rendre
    `À CORRIGER` tant que le diff n'a pas pu être examiné.
 3. **Critères d'acceptation**, un par un, dans l'ordre de `ticket.md` :
@@ -53,7 +54,8 @@ switch/reset/stash/push`, ni aucune édition. Les corrections sont pour la sessi
      le signaler, et indiquer si le statut `review` serait plus juste que `done`.
 4. **Tests** : si le diff touche du code, vérifier qu'il y a des tests pour le
    comportement ajouté ou corrigé et que le journal affirme les avoir fait passer.
-   Signaler un échec de test connu et justifié sans le compter comme bloquant.
+   Signaler un échec de test connu et justifié sans le compter comme bloquant. Si tu
+   ne lances pas les tests, dis-le : le verdict repose alors sur le journal.
 5. **Doc** : pour chaque partie du système modifiée (code, plugin, outillage), la page
    concernée de `<notes>/doc/` doit décrire l'état **actuel** (pas l'historique, pas de
    « ticket 00xx a ajouté… ») et `<notes>/doc/INDEX.md` doit avoir une ligne à jour
@@ -68,7 +70,8 @@ switch/reset/stash/push`, ni aucune édition. Les corrections sont pour la sessi
    Si ce n'est pas encore le cas, le signaler comme à faire avant `status done`
    (c'est normal si l'appelant t'invoque avant le log final : dis-le simplement).
 8. **Cohérence** : `coutcouticket -C <racine> validate` sans erreur ; branche courante
-   = branche du ticket (ou travail déjà fusionné) ; pas de fichier non commité
+   = branche du ticket (ou travail déjà fusionné, vérifié par
+   `git branch --contains <commit>`) ; pas de fichier non commité
    oublié hors notes.
 
 ## Verdict (format exact)
@@ -89,6 +92,9 @@ switch/reset/stash/push`, ni aucune édition. Les corrections sont pour la sessi
 
 ### Git
 - ok | échec : <commande> → <message d'erreur, code de sortie>
+
+### Autres observations (facultatif, hors périmètre, non bloquant)
+- <anomalie remarquée ailleurs : trailer erroné, ticket voisin…>
 
 ### À corriger (liste actionnable, vide si OK)
 1. <action précise : fichier, section, contenu attendu>
