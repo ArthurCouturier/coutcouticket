@@ -39,7 +39,7 @@ jobs:
       - name: Build
         run: cargo build --locked
       - name: Tests
-        run: cargo test --locked
+        run: cargo test --locked --no-fail-fast
         env:
           # Windows : installe réellement la tâche planifiée du démon (runner jetable).
           COUTCOUTICKET_TEST_WINDOWS_SERVICE: ${{ runner.os == 'Windows' && '1' || '' }}

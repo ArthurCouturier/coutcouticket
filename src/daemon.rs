@@ -807,6 +807,7 @@ pub fn status() -> Result<String> {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn plist_is_well_formed() {
         let p = launchd_plist(Path::new("/usr/local/bin/coutcouticket"), Path::new("/tmp/logs"));

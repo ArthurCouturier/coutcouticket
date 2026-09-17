@@ -167,8 +167,14 @@ pub fn render_text(o: &Overview) -> String {
 }
 
 /// Lien Markdown vers un chemin absolu (chevrons : les espaces restent valides).
+/// Sous Windows, séparateurs `/` (`C:/Users/…`) : les visionneuses Markdown les suivent.
 fn link(text: &str, path: &Path) -> String {
-    format!("[{text}](<{}>)", path.display())
+    format!("[{text}](<{}>)", link_path(path))
+}
+
+fn link_path(path: &Path) -> String {
+    let p = path.display().to_string();
+    if cfg!(windows) { p.replace('\\', "/") } else { p }
 }
 
 /// Rendu de `OVERVIEW.md`. Strictement déterministe (aucun horodatage) : le
@@ -328,7 +334,7 @@ mod tests {
         assert!(md.contains("## ⚠️ Projets à vérifier"), "{md}");
         let ticket = a.root.join("0-notes/tickets/0001-titre-avec-barre/ticket.md");
         let row = md.lines().find(|l| l.contains("Titre \\| avec barre")).expect(&md);
-        assert!(row.contains(&format!("[0001](<{}>)", ticket.display())), "{row}");
+        assert!(row.contains(&format!("[0001](<{}>)", link_path(&ticket))), "{row}");
         assert!(row.starts_with("| al pha | [0001]"), "{row}");
         assert!(md.contains("## En cours (0)\n\n_Aucun ticket._"), "{md}");
     }
