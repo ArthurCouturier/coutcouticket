@@ -2,7 +2,7 @@
 id: "0008"
 title: "Ignorer le dossier de notes dans git par défaut à l'init"
 type: feat
-status: in-progress
+status: done
 priority: p2
 projects: [core]
 created: 2026-09-17
@@ -24,13 +24,13 @@ Points à traiter :
 
 ## Critères d'acceptation
 
-- [ ] `init` sur un projet sans .gitignore crée un .gitignore contenant `/0-notes/`, et `git status` n'affiche plus rien sous 0-notes
-- [ ] `init` sur un .gitignore existant ajoute seulement la ligne, à la fin ; le reste du fichier est identique octet pour octet
-- [ ] Relancer `init` ne duplique pas la ligne ; une règle équivalente déjà présente est reconnue
-- [ ] `init --no-gitignore` ne touche pas au .gitignore
-- [ ] `notes_dir` personnalisé dans .coutcouticket.toml : c'est ce dossier qui est ignoré
-- [ ] Notes déjà suivies par git : avertissement avec la commande `git rm -r --cached`, rien n'est retiré de l'index
-- [ ] Tests e2e couvrant ces cas, README et architecture.md à jour
+- [x] `init` sur un projet sans .gitignore crée un .gitignore contenant `/0-notes/`, et `git status` n'affiche plus rien sous 0-notes
+- [x] `init` sur un .gitignore existant ajoute seulement la ligne, à la fin ; le reste du fichier est identique octet pour octet
+- [x] Relancer `init` ne duplique pas la ligne ; une règle équivalente déjà présente est reconnue
+- [x] `init --no-gitignore` ne touche pas au .gitignore
+- [x] `notes_dir` personnalisé dans .coutcouticket.toml : c'est ce dossier qui est ignoré
+- [x] Notes déjà suivies par git : avertissement avec la commande `git rm -r --cached`, rien n'est retiré de l'index
+- [x] Tests e2e couvrant ces cas, README et architecture.md à jour
 
 ## Notes
 
