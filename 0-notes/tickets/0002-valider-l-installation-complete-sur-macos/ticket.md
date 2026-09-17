@@ -2,7 +2,7 @@
 id: "0002"
 title: "Valider l'installation complète sur macOS"
 type: ci
-status: todo
+status: in-progress
 priority: p0
 projects: [daemon, plugin]
 created: 2026-09-17

@@ -1,11 +1,13 @@
 <!-- GÉNÉRÉ par coutcouticket — ne pas éditer. Régénérer : coutcouticket board -->
 # Tableau des tickets — coutcouticket
 
-**5 ouvert(s)** sur 5 · 0 en cours · 1 en revue · 0 bloqué · 4 à faire · 0 terminé · 0 annulé
+**5 ouvert(s)** sur 5 · 1 en cours · 1 en revue · 0 bloqué · 3 à faire · 0 terminé · 0 annulé
 
-## En cours (0)
+## En cours (1)
 
-_Aucun ticket._
+| ID | Titre | Type | Prio | Projets | MAJ |
+|----|-------|------|------|---------|-----|
+| [0002](../tickets/0002-valider-l-installation-complete-sur-macos/ticket.md) | Valider l'installation complète sur macOS | ci | p0 | daemon, plugin | 2026-09-17 |
 
 ## En revue (1)
 
@@ -17,11 +19,10 @@ _Aucun ticket._
 
 _Aucun ticket._
 
-## À faire (4)
+## À faire (3)
 
 | ID | Titre | Type | Prio | Projets | MAJ |
 |----|-------|------|------|---------|-----|
-| [0002](../tickets/0002-valider-l-installation-complete-sur-macos/ticket.md) | Valider l'installation complète sur macOS | ci | p0 | daemon, plugin | 2026-09-17 |
 | [0003](../tickets/0003-distribuer-le-binaire-sans-toolchain-rust/ticket.md) | Distribuer le binaire sans toolchain Rust | ci | p2 | core | 2026-09-17 |
 | [0004](../tickets/0004-dependances-entre-tickets-blocked-by/ticket.md) | Dépendances entre tickets (blocked_by) | feat | p3 | core, mcp | 2026-09-17 |
 | [0005](../tickets/0005-subagent-relecteur-de-cloture/ticket.md) | Subagent relecteur de clôture | feat | p3 | plugin | 2026-09-17 |
@@ -39,6 +40,6 @@ _Aucun ticket._
 | Projet | En cours | En revue | Bloqué | À faire | Terminé | Annulé |
 |--------|---|---|---|---|---|---|
 | core | 0 | 1 | 0 | 2 | 0 | 0 |
-| daemon | 0 | 1 | 0 | 1 | 0 | 0 |
+| daemon | 1 | 1 | 0 | 0 | 0 | 0 |
 | mcp | 0 | 1 | 0 | 1 | 0 | 0 |
-| plugin | 0 | 1 | 0 | 2 | 0 | 0 |
+| plugin | 1 | 1 | 0 | 1 | 0 | 0 |
