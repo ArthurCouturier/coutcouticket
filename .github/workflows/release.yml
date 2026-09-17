@@ -1,12 +1,21 @@
 # Publication d'une release à chaque tag « v<version> ».
 # Procédure : aligner `version` dans Cargo.toml, commiter, puis
 #   git tag v0.2.0 && git push origin v0.2.0
+# Essai sans tag (build + artefacts, aucune publication) :
+#   gh workflow run release.yml --ref <branche> -f essai=true
 # Voir 0-notes/doc/distribution.md.
 name: release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      essai:
+        description: "Essai : construire et téléverser les artefacts sans publier (seul un push de tag v* publie)"
+        type: boolean
+        required: true
+        default: true
 
 permissions:
   contents: read
@@ -42,10 +51,16 @@ jobs:
       - name: Vérifier que le tag correspond à la version de Cargo.toml
         id: version
         run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "${{ inputs.essai }}" != "true" ]; then
+            echo "::error::Un lancement manuel ne publie jamais de release. Corriger : relancer avec « -f essai=true », ou publier en poussant un tag « v<version> »."
+            exit 1
+          fi
           tag="${GITHUB_REF_NAME}"
           version="$(cargo metadata --no-deps --format-version 1 --locked \
             | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "coutcouticket"))')"
-          if [ "$tag" != "v$version" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "::notice::Essai sur « $tag » : version $version lue dans Cargo.toml, contrôle du tag ignoré, aucune publication."
+          elif [ "$tag" != "v$version" ]; then
             echo "::error::Le tag « $tag » ne correspond pas à la version de Cargo.toml ($version). Corriger : aligner Cargo.toml sur le tag (ou supprimer le tag et créer « v$version »)."
             exit 1
           fi
@@ -82,7 +97,7 @@ jobs:
           shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
           cat "$name.tar.gz.sha256"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: |
@@ -96,19 +111,26 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
 
+      - name: Assembler et vérifier les sommes SHA-256
+        run: |
+          cd dist
+          cat *.sha256 > SHA256SUMS
+          ls -l
+          sha256sum -c SHA256SUMS
+
+      # Publication réservée au push d'un tag v* : un essai (workflow_dispatch) s'arrête avant.
       - name: Publier la release GitHub
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           cd dist
-          cat *.sha256 > SHA256SUMS
-          ls -l
           gh release create "$GITHUB_REF_NAME" \
             --title "coutcouticket ${GITHUB_REF_NAME#v}" \
             --generate-notes \

@@ -2,7 +2,7 @@
 id: "0024"
 title: "Passer les actions artifact de la release à Node 24"
 type: ci
-status: todo
+status: in-progress
 priority: p3
 projects: [core]
 created: 2026-09-17
