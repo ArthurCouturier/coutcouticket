@@ -31,3 +31,4 @@ Proposition : `coutcouticket doctor` (et éventuellement un outil MCP `notes_doc
 
 ## Notes
 
+- Idées ajoutées le 2026-09-17 (rapports du 0009) : détecter un plist installé différent du gabarit courant et proposer `daemon install` ; faire signaler par le hook SessionStart un démon injoignable, au lieu de l'échec silencieux du MCP.
