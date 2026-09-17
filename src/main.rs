@@ -1,4 +1,5 @@
 mod board;
+mod claude;
 mod config;
 mod daemon;
 mod fsutil;
@@ -135,7 +136,7 @@ enum Cmd {
     },
     /// Enregistre le serveur MCP du démon dans Claude Code.
     SetupClaude {
-        /// Exécute la commande « claude mcp add » au lieu de l'afficher.
+        /// Enregistre (ou met à jour) le serveur au lieu d'afficher la commande. Sans danger si déjà fait.
         #[arg(long)]
         apply: bool,
     },
@@ -353,21 +354,30 @@ fn run(cli: Cli) -> Result<()> {
             }
         }
         Cmd::SetupClaude { apply } => {
-            let args = daemon::claude_add_args()?;
-            let display = format!(
-                "claude {}",
-                args.iter().map(|a| if a.contains(' ') { format!("\"{a}\"") } else { a.clone() }).collect::<Vec<_>>().join(" ")
-            );
             if apply {
-                match std::process::Command::new("claude").args(&args).status() {
-                    Ok(s) if s.success() => println!("Serveur MCP coutcouticket enregistré dans Claude Code."),
-                    Ok(_) => bail!("« claude mcp add » a échoué. Commande à lancer à la main :\n{display}"),
-                    Err(_) => bail!("binaire « claude » introuvable. Commande à lancer à la main :\n{display}"),
+                match claude::apply()? {
+                    claude::Outcome::UpToDate { scope } => println!(
+                        "Serveur MCP coutcouticket déjà enregistré dans Claude Code (portée {}) : enregistrement à jour, rien à faire.",
+                        scope.as_deref().unwrap_or("inconnue")
+                    ),
+                    claude::Outcome::Registered { removed } if removed.is_empty() => {
+                        println!("Serveur MCP coutcouticket enregistré dans Claude Code (portée user).")
+                    }
+                    claude::Outcome::Registered { removed } => println!(
+                        "Serveur MCP coutcouticket mis à jour dans Claude Code : ancien enregistrement retiré (portée {}), nouveau en portée user.\nRedémarrer les sessions Claude Code ouvertes (ou /mcp) pour qu'elles le prennent en compte.",
+                        removed.join(", ")
+                    ),
                 }
             } else {
                 let cfg = DaemonConfig::load_or_create()?;
+                let args = claude::Registration::wanted()?.add_args();
+                let display = format!(
+                    "claude {}",
+                    args.iter().map(|a| if a.contains(' ') { format!("\"{a}\"") } else { a.clone() }).collect::<Vec<_>>().join(" ")
+                );
                 println!("Commande pour enregistrer le démon dans Claude Code (portée utilisateur) :\n\n{display}\n");
-                println!("Ou relancer avec --apply pour l'exécuter. Port : {}.", cfg.port);
+                println!("Si « coutcouticket » est déjà enregistré avec une autre valeur, le retirer d'abord : claude mcp remove coutcouticket");
+                println!("Ou relancer avec --apply : vérifie l'existant et ne le remplace que s'il diffère. Port : {}.", cfg.port);
                 println!("Secours sans démon : claude mcp add --scope user coutcouticket-stdio -- coutcouticket mcp");
             }
         }

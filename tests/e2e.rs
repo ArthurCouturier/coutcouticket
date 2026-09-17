@@ -492,3 +492,118 @@ fn gitignore_des_notes() {
     assert!(!status.contains("docs/notes"), "{status}");
     assert!(env.repo.join("docs/notes/0-global/BOARD.md").is_file());
 }
+
+// ---------------------------------------------------------------------------
+// setup-claude --apply (binaire claude simulé)
+// ---------------------------------------------------------------------------
+
+/// Faux `claude` : l'enregistrement vit dans `$FAKE_CLAUDE_STATE` (fichier absent =
+/// serveur absent), chaque appel est journalisé dans `$FAKE_CLAUDE_LOG`. Reproduit le
+/// format de `claude mcp get` et le refus de `mcp add` sur un nom existant.
+const FAKE_CLAUDE: &str = r#"#!/bin/sh
+echo "$*" >> "$FAKE_CLAUDE_LOG"
+state="$FAKE_CLAUDE_STATE"
+case "$1 $2" in
+"mcp get")
+  if [ ! -f "$state" ]; then echo "No MCP server named \"$3\". Configured servers: autre" >&2; exit 1; fi
+  . "$state"
+  case "$SCOPE" in user) label="User config (available in all your projects)";; *) label="Local config (private to you in this project)";; esac
+  printf '%s:\n  Scope: %s\n  Status: ✘ Failed to connect\n  Type: http\n  URL: %s\n  Headers:\n    Authorization: %s\n\nTo remove this server, run: claude mcp remove %s -s %s\n' "$3" "$label" "$URL" "$AUTH" "$3" "$SCOPE"
+  ;;
+"mcp list")
+  if [ -f "$state" ]; then . "$state"; echo "coutcouticket: $URL (HTTP) - ✘ Failed to connect"; fi
+  ;;
+"mcp add")
+  if [ -f "$state" ]; then . "$state"; echo "MCP server $7 already exists in $SCOPE config" >&2; exit 1; fi
+  printf "SCOPE='%s'\nURL='%s'\nAUTH='%s'\n" "$6" "$8" "${10#Authorization: }" > "$state"
+  echo "Added HTTP MCP server $7 with URL: $8 to $6 config"
+  ;;
+"mcp remove")
+  if [ ! -f "$state" ]; then echo "No MCP server found with name: $3" >&2; exit 1; fi
+  . "$state"
+  if [ "$4" = "--scope" ] && [ "$5" != "$SCOPE" ]; then echo "No MCP server found with name: $3 in $5 config" >&2; exit 1; fi
+  rm "$state"
+  echo "Removed MCP server $3 from $SCOPE config"
+  ;;
+*) echo "commande simulée inconnue : $*" >&2; exit 2;;
+esac
+"#;
+
+#[test]
+fn setup_claude_idempotent() {
+    use std::os::unix::fs::PermissionsExt;
+    let env = Env::new();
+    let fake = env.home.join("claude-simule");
+    fs::write(&fake, FAKE_CLAUDE).unwrap();
+    fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+    let state = env.home.join("claude-etat");
+    let log = env.home.join("claude-appels.log");
+    fs::write(env.home.join("daemon.toml"), "port = 49999\ntoken = \"jeton-attendu\"\n").unwrap();
+    let apply = || {
+        let _ = fs::remove_file(&log);
+        let out = env
+            .cmd(BIN)
+            .args(["setup-claude", "--apply"])
+            .env("COUTCOUTICKET_CLAUDE_BIN", &fake)
+            .env("FAKE_CLAUDE_STATE", &state)
+            .env("FAKE_CLAUDE_LOG", &log)
+            .output()
+            .unwrap();
+        let calls = fs::read_to_string(&log).unwrap_or_default();
+        (out, calls)
+    };
+    let want_state = "SCOPE='user'\nURL='http://127.0.0.1:49999/mcp'\nAUTH='Bearer jeton-attendu'\n";
+
+    // --- absent : ajouté
+    let (out, calls) = apply();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("enregistré dans Claude Code (portée user)"), "{}", stdout(&out));
+    assert!(calls.contains("mcp add --transport http --scope user coutcouticket http://127.0.0.1:49999/mcp --header Authorization: Bearer jeton-attendu"), "{calls}");
+    assert_eq!(fs::read_to_string(&state).unwrap(), want_state);
+
+    // --- identique : second --apply sans effet, code 0
+    let (out, calls) = apply();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("déjà enregistré") && stdout(&out).contains("à jour"), "{}", stdout(&out));
+    assert_eq!(calls, "mcp get coutcouticket\n", "aucune écriture attendue");
+
+    // --- différent (autre jeton et port) : retiré de sa portée puis recréé
+    fs::write(&state, "SCOPE='user'\nURL='http://127.0.0.1:47813/mcp'\nAUTH='Bearer ancien-jeton'\n").unwrap();
+    let (out, calls) = apply();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("mis à jour") && stdout(&out).contains("portée user"), "{}", stdout(&out));
+    let verbs: Vec<String> = calls.lines().map(|l| l.split(' ').take(2).collect::<Vec<_>>().join(" ")).collect();
+    assert_eq!(verbs, ["mcp get", "mcp remove", "mcp get", "mcp add", "mcp get"], "{calls}");
+    assert!(calls.contains("mcp remove coutcouticket --scope user\n"), "{calls}");
+    assert_eq!(fs::read_to_string(&state).unwrap(), want_state);
+    let list = env.cmd(fake.to_str().unwrap()).args(["mcp", "list"]).env("FAKE_CLAUDE_STATE", &state).env("FAKE_CLAUDE_LOG", &log).output().unwrap();
+    assert!(stdout(&list).contains("http://127.0.0.1:49999/mcp"), "{}", stdout(&list));
+
+    // --- différent dans une autre portée : le remove cible cette portée
+    fs::write(&state, "SCOPE='local'\nURL='http://127.0.0.1:49999/mcp'\nAUTH='Bearer ancien-jeton'\n").unwrap();
+    let (out, calls) = apply();
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("portée local"), "{}", stdout(&out));
+    assert!(calls.contains("mcp remove coutcouticket --scope local"), "{calls}");
+    assert_eq!(fs::read_to_string(&state).unwrap(), want_state);
+    assert!(!stdout(&out).contains("ancien-jeton") && !stderr(&out).contains("ancien-jeton"));
+
+    // --- échec de claude : message sans commande manuelle vouée à échouer, jeton masqué
+    fs::write(&fake, "#!/bin/sh\necho \"$*\" >> \"$FAKE_CLAUDE_LOG\"\n[ \"$2\" = get ] && exit 1\necho \"refus simulé $*\" >&2\nexit 1\n").unwrap();
+    let (out, _) = apply();
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(err.contains("« claude mcp add » a échoué") && err.contains("setup-claude --apply"), "{err}");
+    assert!(!err.contains("jeton-attendu"), "jeton affiché : {err}");
+    assert!(!err.contains("à la main"), "{err}");
+
+    // --- claude introuvable
+    let out = env
+        .cmd(BIN)
+        .args(["setup-claude", "--apply"])
+        .env("COUTCOUTICKET_CLAUDE_BIN", env.home.join("inexistant"))
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("« claude » introuvable"), "{}", stderr(&out));
+}

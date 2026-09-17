@@ -41,6 +41,13 @@ coutcouticket daemon status         # → « coutcouticket 0.1.0 ok »
 coutcouticket setup-claude --apply  # enregistre le MCP du démon dans Claude Code (portée utilisateur)
 ```
 
+`setup-claude --apply` peut être relancé sans danger : il lit l'enregistrement existant
+(`claude mcp get coutcouticket`). Identique (même URL, même jeton) : rien n'est modifié.
+Différent (port ou jeton changé, autre portée) : l'ancien est retiré de sa portée
+(`claude mcp remove --scope …`) puis recréé en portée utilisateur. Sans `--apply`, la
+commande `claude mcp add` est seulement affichée. Binaire `claude` hors du PATH :
+`COUTCOUTICKET_CLAUDE_BIN=/chemin/vers/claude`.
+
 Plugin Claude Code (skill `ticket` + hook de démarrage de session), dans Claude Code :
 
 ```
