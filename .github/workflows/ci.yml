@@ -59,7 +59,13 @@ jobs:
           Set-Content -NoNewline -Path "dist/$name.zip.sha256" -Value "$hash  $name.zip"
           $env:COUTCOUTICKET_BASE_URL = ([Uri](Resolve-Path dist).Path).AbsoluteUri
           $dir = Join-Path $env:RUNNER_TEMP 'cct-bin'
+          $cct = Join-Path $dir 'coutcouticket.exe'
           ./install.ps1 -Version 0.0.0 -Dir $dir
+          # Mise à jour démon en marche : l'exe en cours d'exécution est renommé, la tâche relancée.
+          & $cct daemon install
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           ./install.ps1 -Version 0.0.0 -Dir $dir
-          & (Join-Path $dir 'coutcouticket.exe') --version
+          & $cct daemon status
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $cct daemon uninstall
           if ($LASTEXITCODE -ne 0) { exit 1 }

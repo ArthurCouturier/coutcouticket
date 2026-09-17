@@ -377,10 +377,7 @@ fn hooks_hors_du_path() {
     fs::remove_file(&copy).unwrap();
     env.git_ok(&["commit", "-q", "--allow-empty", "-m", "repli sur le PATH"]);
     let refused = env.gui(&["commit", "-q", "--allow-empty", "-m", "introuvable"]);
-    if refused.status.success() {
-        let found = env.cmd("sh").env("PATH", &without_bin).args(["-c", "command -v coutcouticket; echo \"$PATH\""]).output().unwrap();
-        panic!("commit accepté sans binaire :\n{}\n{}\ncommand -v : {}", stderr(&refused), fs::read_to_string(&pre_commit).unwrap(), stdout(&found));
-    }
+    assert!(!refused.status.success(), "commit accepté sans binaire");
     assert!(stderr(&refused).contains("coutcouticket introuvable"), "{}", stderr(&refused));
 
     // --- hook tiers jamais modifié
@@ -1104,10 +1101,7 @@ fn hooks_git_for_windows() {
     assert!(out.status.success(), "commit refusé :\n{}", stderr(&out));
     fs::remove_file(&copy).unwrap();
     let refused = git_without_bin(&["commit", "-q", "--allow-empty", "-m", "introuvable"]);
-    if refused.status.success() {
-        let found = env.cmd("sh").env("PATH", &without_bin).args(["-c", "command -v coutcouticket; echo \"$PATH\""]).output().unwrap();
-        panic!("commit accepté sans binaire :\n{}\n{}\ncommand -v : {}", stderr(&refused), fs::read_to_string(&pre_commit).unwrap(), stdout(&found));
-    }
+    assert!(!refused.status.success(), "commit accepté sans binaire");
     assert!(stderr(&refused).contains("coutcouticket introuvable"), "{}", stderr(&refused));
 }
 
