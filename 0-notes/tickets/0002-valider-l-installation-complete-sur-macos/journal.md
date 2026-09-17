@@ -39,3 +39,18 @@ Critère 3 : hook testé à la main, reste l'observation dans une vraie session 
 Critère 5, client graphique : risque signalé. Une app lancée par le Dock hérite du PATH de launchd (/usr/bin:/bin:/usr/sbin:/sbin), sans ~/.cargo/bin ni /opt/homebrew/bin. Les hooks git échoueraient alors avec « coutcouticket introuvable dans le PATH ». Pas encore observé : à confirmer avec le client de l'utilisateur. Ticket fix à créer à la clôture (par ex. chemin absolu du binaire écrit dans les hooks par `init`).
 
 **Prochaine étape :** Au redémarrage de Claude Code dans ce dossier : vérifier que le contexte « [coutcouticket] Projet : … » est injecté avec le ticket 0002 et cette prochaine étape, puis cocher le critère 3 et passer au critère 4 (BOARD.md régénéré en moins de 2 s après une modification manuelle).
+
+## 2026-09-17 14:39 — avancement
+
+Critère 3 vérifié et coché. Au démarrage d'une nouvelle session Claude Code dans ce dossier, le hook SessionStart a injecté le contexte « [coutcouticket] Projet : … » : chemin du projet, paramètre `project`, compteurs (1 en cours, 1 en revue, 0 bloqué, 3 à faire), branche courante → ticket 0002 (in-progress) et la prochaine étape notée.
+
+**Prochaine étape :** Critère 4 : l'utilisateur passe à la main le statut du ticket 0005 de `todo` à `blocked` dans son éditeur. Comparer les mtimes de ticket.md et BOARD.md (écart < 2 s), vérifier que 0005 apparaît dans « Bloqué », puis remettre `todo` avec ticket_set_status.
+
+## 2026-09-17 14:41 — avancement
+
+Critère 4 vérifié et coché. L'utilisateur a changé à la main, dans son éditeur, le statut du ticket 0005 (`todo` → `blocked`).
+- mtime de ticket.md : 14:40:37,726 ; mtime de BOARD.md : 14:40:38,099. BOARD.md a donc été régénéré **0,37 s** après l'enregistrement, par le démon et via FSEvents.
+- Contenu correct : 0005 figure dans « Bloqué (1) » et l'en-tête affiche « 1 bloqué · 2 à faire ».
+- Statut remis à `todo` avec `ticket_set_status`, ce qui a ajouté une entrée explicative au journal du 0005. BOARD.md et le ticket.md du 0005 sont de nouveau identiques à HEAD, et `notes_validate` ne signale aucun problème.
+
+**Prochaine étape :** Critère 5 : faire un commit sur la branche ci/0002 depuis le terminal et vérifier que le hook ajoute le trailer « Ticket: 0002 ». Refaire ensuite l'essai depuis le client git graphique habituel de l'utilisateur, pour voir si le PATH de launchd fait échouer le hook.
