@@ -2,7 +2,7 @@
 id: "0006"
 title: "Faire fonctionner les hooks git hors du terminal"
 type: fix
-status: in-progress
+status: done
 priority: p1
 projects: [core]
 created: 2026-09-17
@@ -25,11 +25,11 @@ Piste : `init` écrit dans le hook le chemin absolu du binaire courant (`std::en
 
 ## Critères d'acceptation
 
-- [ ] La commande de reproduction réussit dans un projet initialisé et le trailer « Ticket: <id> » est ajouté sur une branche de ticket
-- [ ] Le binaire déplacé ou supprimé : le hook se rabat sur le PATH, puis affiche le message d'erreur actuel s'il reste introuvable
-- [ ] Relancer `init` réécrit les hooks coutcouticket existants avec le nouveau gabarit, sans toucher aux hooks tiers
-- [ ] Test de bout en bout couvrant l'exécution du hook avec un PATH réduit
-- [ ] Critère 5 du ticket 0002 revérifié et coché
+- [x] La commande de reproduction réussit dans un projet initialisé et le trailer « Ticket: <id> » est ajouté sur une branche de ticket
+- [x] Le binaire déplacé ou supprimé : le hook se rabat sur le PATH, puis affiche le message d'erreur actuel s'il reste introuvable
+- [x] Relancer `init` réécrit les hooks coutcouticket existants avec le nouveau gabarit, sans toucher aux hooks tiers
+- [x] Test de bout en bout couvrant l'exécution du hook avec un PATH réduit
+- [x] Critère 5 du ticket 0002 revérifié et coché
 
 ## Notes
 

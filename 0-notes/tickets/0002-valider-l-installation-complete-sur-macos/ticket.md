@@ -19,7 +19,7 @@ Tout a été testé sous Linux (inotify). Le LaunchAgent, FSEvents, l'enregistre
 - [x] setup-claude --apply : les outils ticket_* apparaissent dans Claude Code
 - [x] Plugin installé : le contexte coutcouticket est injecté au démarrage de session
 - [x] Édition manuelle d'un ticket : BOARD.md régénéré en moins de 2 s (FSEvents)
-- [ ] Hooks git fonctionnels depuis le terminal et depuis le client git habituel (PATH)
+- [x] Hooks git fonctionnels depuis le terminal et depuis le client git habituel (PATH)
 - [ ] init lancé sur un vrai projet existant sans perte de contenu
 
 ## Notes

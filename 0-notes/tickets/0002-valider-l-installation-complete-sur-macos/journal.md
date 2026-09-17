@@ -77,3 +77,9 @@ Tickets fix créés : 0006 (hooks git hors terminal, p1) et 0007 (setup-claude -
 Le 0001 reste en review : son journal subordonne le passage en done à la validation du 0002.
 
 **Prochaine étape :** Obtenir de l'utilisateur le projet cible du critère 6 et y lancer `coutcouticket init` (git status propre d'abord, puis relever CLAUDE.md et les hooks existants et vérifier qu'ils sont intacts). Après une fermeture de session macOS, prouver le critère 1 avec `ps -o pid,lstart -p $(pgrep -f 'coutcouticket daemon run')` et `coutcouticket daemon status`.
+
+## 2026-09-17 14:48 — avancement
+
+Critère 5 revérifié après le correctif 0006 (commit 81f8e7f, binaire réinstallé, `init` relancé ici) et coché. `env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin git commit --allow-empty -m "test PATH graphique"` : code 0, trailer « Ticket: 0006 » ajouté, car le commit a été fait sur la branche du 0006. Le commit vide de test (948f7d9) a été retiré ensuite avec `git reset --soft HEAD~1`, après avoir vérifié qu'il était vide.
+
+**Prochaine étape :** Critère 6 : obtenir de l'utilisateur le chemin exact du projet existant, puis y lancer `coutcouticket init` (git status propre d'abord ; relever CLAUDE.md et les hooks existants, husky ou lefthook compris, et vérifier qu'ils sont intacts). Critère 1 en dernier, après la déconnexion macOS faite par l'utilisateur.
