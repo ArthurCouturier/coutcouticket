@@ -66,9 +66,9 @@ pub fn render(p: &Project, scan: &Scan) -> String {
     for (idx, status) in Status::ALL.iter().enumerate() {
         let mut list: Vec<&Ticket> = by_status.get(&idx).cloned().unwrap_or_default();
         if status.is_open() {
-            list.sort_by(|a, b| (a.doc.front.priority, a.doc.front.id).cmp(&(b.doc.front.priority, b.doc.front.id)));
+            list.sort_by_key(|a| (a.doc.front.priority, a.doc.front.id));
         } else {
-            list.sort_by(|a, b| (b.doc.front.updated, b.doc.front.id).cmp(&(a.doc.front.updated, a.doc.front.id)));
+            list.sort_by_key(|a| std::cmp::Reverse((a.doc.front.updated, a.doc.front.id)));
         }
         let _ = writeln!(out, "## {} ({})\n", status.label(), list.len());
         if list.is_empty() {

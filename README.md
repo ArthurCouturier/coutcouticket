@@ -189,6 +189,7 @@ le port et le jeton, en 0600).
 
 ```sh
 cargo test            # unitaires + bout en bout (binaire réel, git, hooks, MCP stdio, démon HTTP)
+cargo clippy --all-targets -- -D warnings   # exigé par la CI
 cargo build --release
 ```
 

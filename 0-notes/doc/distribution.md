@@ -4,7 +4,7 @@
 
 | Élément | Fichier | Rôle |
 |---|---|---|
-| CI | `.github/workflows/ci.yml` | `cargo test --locked` + `sh -n install.sh` sur push `main` et PR (macOS) |
+| CI | `.github/workflows/ci.yml` | `cargo clippy --all-targets --locked -- -D warnings` (tout avertissement fait échouer) + `cargo test --locked` + `sh -n install.sh` sur push `main` et PR (macOS) |
 | Release | `.github/workflows/release.yml` | sur tag `v*` : tests, build, archives, GitHub Release |
 | Installation | `install.sh` (racine) | télécharge, vérifie, installe, relance le démon |
 
