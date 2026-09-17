@@ -2,7 +2,7 @@
 id: "0025"
 title: "Démon sous Windows"
 type: feat
-status: todo
+status: in-progress
 priority: p2
 projects: [daemon, core]
 created: 2026-09-17
