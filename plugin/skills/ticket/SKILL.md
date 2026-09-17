@@ -16,6 +16,7 @@ agir. Ne refais jamais à la main ce qu'un outil fait.
 2. **Jamais de branche créée à la main** : uniquement via `ticket_start`.
 3. **Toujours passer `project`** : le chemin absolu de la racine, donné au démarrage
    de session. S'il manque, le trouver en remontant jusqu'à `.coutcouticket.toml`.
+   Seule exception : `tickets_overview`, qui couvre tous les projets enregistrés.
 4. **Un outil renvoie une erreur ? La lire et corriger la cause.** Ne jamais la
    contourner par une édition de fichier.
 5. Le corps de `ticket.md` (Description, Critères d'acceptation, Notes) s'édite
@@ -26,6 +27,7 @@ agir. Ne refais jamais à la main ce qu'un outil fait.
 | L'utilisateur veut… | Faire |
 |---|---|
 | savoir où on en est, quoi faire ensuite | lire `0-notes/0-global/BOARD.md` |
+| quoi faire, tous projets confondus | `tickets_overview` (sans `project` ; reprendre ensuite avec le `project_path` du ticket choisi) |
 | créer un ticket | procédure **Créer** |
 | travailler sur un ticket | procédure **Démarrer / reprendre** |
 | noter une avancée ou s'arrêter | procédure **Journaliser** |
@@ -129,6 +131,6 @@ Dans cet ordre, sans en sauter :
 ## Si le MCP est indisponible
 
 La CLI fait exactement la même chose :
-`coutcouticket new|start|status|depend|log|decide|list|show|files|board|validate` (voir
+`coutcouticket new|start|status|depend|log|decide|list|overview|show|files|board|validate` (voir
 `coutcouticket --help`). Démon arrêté : `coutcouticket daemon status` pour
 diagnostiquer, et le signaler à l'utilisateur.

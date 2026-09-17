@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::Registry;
 use crate::model::{Priority, Status, TicketId};
+use crate::overview;
 use crate::store::{CreateInput, Project, resolve_project};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,6 +134,14 @@ pub struct ListParams {
     pub status: Option<Status>,
     /// Filtrer par projet de dev (valeur du champ projects).
     pub dev_project: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct OverviewParams {
+    /// Filtrer par statut ouvert (in-progress, review, blocked, todo).
+    pub status: Option<Status>,
+    /// Filtrer par priorité.
+    pub priority: Option<Priority>,
 }
 
 #[derive(Serialize)]
@@ -262,6 +271,13 @@ impl TicketServer {
         let project = tryt!(self.project(p.project.as_deref()));
         let list = tryt!(project.list(p.status, p.dev_project.as_deref()));
         json(&list)
+    }
+
+    #[tool(description = "Vue de tous les projets enregistrés, sans paramètre « project » : tickets ouverts triés par statut (in-progress, review, blocked, puis todo), priorité, projet puis id. Chaque ticket donne project (nom), project_path (à passer aux outils ticket_*) et open_blockers. « warnings » liste les projets introuvables ou aux notes invalides, sans faire échouer la vue. Répond à « quoi faire, tous projets confondus ».")]
+    fn tickets_overview(&self, Parameters(p): Parameters<OverviewParams>) -> Result<CallToolResult, McpError> {
+        let registry = tryt!(Registry::load());
+        let view = tryt!(overview::build(&registry.projects, overview::Filter { status: p.status, priority: p.priority }));
+        json(&view)
     }
 
     #[tool(description = "Point d'entrée pour reprendre un ticket : métadonnées (dont blocked_by et open_blockers), chemins des fichiers, dernière « prochaine étape », branche attendue et branche courante. Si git échoue (binaire absent, licence Xcode…), current_branch vaut null et git_error donne la commande, le code, la sortie d'erreur et la correction.")]

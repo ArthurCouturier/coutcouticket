@@ -5,7 +5,7 @@
 | Élément | Fichier | Rôle |
 |---|---|---|
 | CI | `.github/workflows/ci.yml` | `cargo clippy --all-targets --locked -- -D warnings` (tout avertissement fait échouer) + `cargo test --locked` + `sh -n install.sh` sur push `main` et PR (macOS) |
-| Release | `.github/workflows/release.yml` | sur tag `v*` : tests, build, archives, GitHub Release |
+| Release | `.github/workflows/release.yml` | sur tag `v*` : tests, build, archives, GitHub Release ; lancement manuel = essai sans publication |
 | Installation | `install.sh` (racine) | télécharge, vérifie, installe, relance le démon |
 
 Seul macOS est publié en binaire. Ailleurs : `cargo install --git https://github.com/ArthurCouturier/coutcouticket`.
@@ -21,10 +21,25 @@ Seul macOS est publié en binaire. Ailleurs : `cargo install --git https://githu
    - re-signe en ad hoc (`codesign --force --sign -`) et vérifie la signature ;
    - produit `coutcouticket-<version>-<target>.tar.gz` (dossier du même nom : binaire + README)
      et `<archive>.sha256` (format `shasum -a 256`), plus un `SHA256SUMS` global ;
-   - publie avec `gh release create --verify-tag --generate-notes`.
+   - téléverse les archives (`actions/upload-artifact@v7`, un artefact par cible), puis le job
+     `release` les rassemble (`actions/download-artifact@v8`, `merge-multiple`), construit
+     `SHA256SUMS` et le vérifie (`sha256sum -c`) ;
+   - publie avec `gh release create --verify-tag --generate-notes` (étape réservée au push d'un tag `v*`).
 
 Tag erroné : supprimer le tag local et distant, corriger, recréer. Un workflow échoué ne
 publie rien (la release n'est créée qu'après les deux builds).
+
+## Essayer la release sans tag
+
+```sh
+gh workflow run release.yml --ref <branche> -f essai=true
+gh run watch   # ou : gh run list --workflow release.yml
+```
+
+Le lancement manuel (`workflow_dispatch`) exécute tout sauf la publication : tests, builds,
+signature, archives, artefacts téléversés puis rassemblés et vérifiés. La version vient de
+`Cargo.toml` (pas de contrôle de tag). `-f essai=false` échoue avec un message explicite :
+seul un push de tag publie. Les archives restent téléchargeables dans les artefacts du run.
 
 ## install.sh
 
@@ -71,5 +86,11 @@ coutcouticket daemon status   # doit afficher la nouvelle version
 - **Signature** : un binaire arm64 doit être signé (ad hoc suffit). Pas de notarisation :
   `curl` ne pose pas d'attribut de quarantaine ; une archive venue d'un navigateur en a un,
   retiré par `install.sh` (sinon : `xattr -d com.apple.quarantine coutcouticket`).
+- **Actions et Node** : toutes les actions des workflows tournent sous Node 24
+  (`runs.using: node24`). Vérifier avant de monter une action :
+  `gh api "repos/<owner>/<action>/contents/action.yml?ref=<tag>" --jq .content | base64 -d | grep using`.
+  `upload-artifact` et `download-artifact` se montent ensemble (v7/v8) : `download-artifact@v8`
+  échoue sur une somme d'artefact invalide (`digest-mismatch: error` par défaut) et ne
+  décompresse que les artefacts zippés (`upload-artifact` zippe par défaut, `archive: true`).
 - **Tag et version** : `coutcouticket --version` et `/health` affichent `CARGO_PKG_VERSION` ;
   le workflow refuse un tag qui ne correspond pas.
