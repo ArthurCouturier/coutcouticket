@@ -505,8 +505,11 @@ pub fn install() -> Result<String> {
     if !out.status.success() {
         bail!("launchctl bootstrap a échoué : {}", String::from_utf8_lossy(&out.stderr).trim());
     }
+    // launchctl rend la main avant que le nouveau démon écoute : attendre qu'il
+    // réponde, pour qu'une commande enchaînée (« daemon install && ui ») le trouve.
+    let status = wait_health();
     Ok(format!(
-        "Démon installé ({}) et démarré sur le port {}.\nLogs : {}\nÉtape suivante : « coutcouticket setup-claude »",
+        "Démon installé ({}) et démarré sur le port {}.\n{status}\nLogs : {}\nÉtape suivante : « coutcouticket setup-claude »",
         plist.display(),
         cfg.port,
         log_dir.join("daemon.log").display()
@@ -729,14 +732,7 @@ mod windows {
                 text(&out)
             );
         }
-        let start = Instant::now();
-        let status = loop {
-            match super::health() {
-                Ok(body) => break format!("Réponse : {body}"),
-                Err(_) if start.elapsed() < Duration::from_secs(10) => std::thread::sleep(Duration::from_millis(200)),
-                Err(e) => break format!("Le démon ne répond pas encore ({e:#}) : consulter le journal, puis « coutcouticket daemon status »."),
-            }
-        };
+        let status = super::wait_health();
         let window = if conhost.is_some() {
             ""
         } else {
@@ -764,6 +760,19 @@ mod windows {
             "Démon arrêté et désinstallé (tâche « {name} » retirée). La configuration ({}) est conservée.",
             crate::config::global_dir()?.display()
         ))
+    }
+}
+
+/// Attend (10 s au plus) que le démon qui vient d'être lancé réponde sur `/health`.
+#[cfg(any(target_os = "macos", windows))]
+fn wait_health() -> String {
+    let start = Instant::now();
+    loop {
+        match health() {
+            Ok(body) => return format!("Réponse : {body}"),
+            Err(_) if start.elapsed() < Duration::from_secs(10) => std::thread::sleep(Duration::from_millis(100)),
+            Err(e) => return format!("Le démon ne répond pas encore ({e:#}) : consulter le journal, puis « coutcouticket daemon status »."),
+        }
     }
 }
 
