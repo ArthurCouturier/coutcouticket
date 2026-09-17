@@ -1,24 +1,25 @@
 <!-- GÉNÉRÉ par coutcouticket — ne pas éditer. Régénérer : coutcouticket board -->
 # Tableau des tickets — coutcouticket
 
-**15 ouvert(s)** sur 25 · 0 en cours · 2 en revue · 0 bloqué · 13 à faire · 10 terminé · 0 annulé
+**15 ouvert(s)** sur 25 · 0 en cours · 3 en revue · 0 bloqué · 12 à faire · 10 terminé · 0 annulé
 
 ## En cours (0)
 
 _Aucun ticket._
 
-## En revue (2)
+## En revue (3)
 
 | ID | Titre | Type | Prio | Projets | Bloqué par | MAJ |
 |----|-------|------|------|---------|------------|-----|
 | [0009](../tickets/0009-rendre-le-demon-joignable-des-l-ouverture-de/ticket.md) | Rendre le démon joignable dès l'ouverture de session macOS | fix | p1 | daemon | — | 2026-09-17 |
 | [0007](../tickets/0007-rendre-setup-claude-apply-idempotent/ticket.md) | Rendre setup-claude --apply idempotent | fix | p2 | core | — | 2026-09-17 |
+| [0024](../tickets/0024-passer-les-actions-artifact-de-la-release-a-node/ticket.md) | Passer les actions artifact de la release à Node 24 | ci | p3 | core | — | 2026-09-17 |
 
 ## Bloqué (0)
 
 _Aucun ticket._
 
-## À faire (13)
+## À faire (12)
 
 | ID | Titre | Type | Prio | Projets | Bloqué par | MAJ |
 |----|-------|------|------|---------|------------|-----|
@@ -34,7 +35,6 @@ _Aucun ticket._
 | [0020](../tickets/0020-a-valider-rotation-du-journal-du-demon/ticket.md) | À valider : rotation du journal du démon | feat | p3 | daemon | — | 2026-09-17 |
 | [0021](../tickets/0021-a-valider-commande-self-update/ticket.md) | À valider : commande self-update | feat | p3 | core | — | 2026-09-17 |
 | [0022](../tickets/0022-a-valider-lister-les-tickets-prets-a-demarrer/ticket.md) | À valider : lister les tickets prêts à démarrer | feat | p3 | core, mcp | — | 2026-09-17 |
-| [0024](../tickets/0024-passer-les-actions-artifact-de-la-release-a-node/ticket.md) | Passer les actions artifact de la release à Node 24 | ci | p3 | core | — | 2026-09-17 |
 
 ## Terminé (10)
 
@@ -59,7 +59,7 @@ _Aucun ticket._
 
 | Projet | En cours | En revue | Bloqué | À faire | Terminé | Annulé |
 |--------|---|---|---|---|---|---|
-| core | 0 | 1 | 0 | 11 | 8 | 0 |
+| core | 0 | 2 | 0 | 10 | 8 | 0 |
 | daemon | 0 | 1 | 0 | 5 | 2 | 0 |
 | mcp | 0 | 0 | 0 | 4 | 2 | 0 |
 | plugin | 0 | 0 | 0 | 2 | 3 | 0 |
