@@ -7,4 +7,4 @@ les `decisions.md` des tickets.
 | Page | Sujet | Lire quand… |
 |------|-------|-------------|
 <!-- Exemple : | [auth.md](auth.md) | Authentification, tokens | on touche au login, aux sessions ou aux droits | -->
-| [architecture.md](architecture.md) | Modules, invariants, démon, watcher, hooks git, .gitignore, tests | on modifie le code de coutcouticket, on ajoute un champ ou un outil, on touche au démon, aux hooks git ou à init |
+| [architecture.md](architecture.md) | Modules, invariants, dépendances entre tickets, démon, watcher, hooks git, .gitignore, tests | on modifie le code de coutcouticket, on ajoute un champ ou un outil, on touche aux dépendances (blocked_by), on touche au démon, aux hooks git ou à init |

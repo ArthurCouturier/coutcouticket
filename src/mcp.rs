@@ -66,6 +66,22 @@ pub struct CreateParams {
     /// Critères d'acceptation vérifiables, un par élément.
     #[serde(default)]
     pub acceptance: Vec<String>,
+    /// Tickets dont celui-ci dépend (doivent exister), ex. ["3", "0007"].
+    #[serde(default)]
+    pub blocked_by: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DependParams {
+    /// Chemin absolu de la racine du projet.
+    pub project: Option<String>,
+    /// Identifiant du ticket dépendant (celui qui attend).
+    pub id: String,
+    /// Tickets dont il dépend, ex. ["3", "0007"].
+    pub on: Vec<String>,
+    /// true pour retirer ces dépendances au lieu de les ajouter.
+    #[serde(default)]
+    pub remove: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -134,6 +150,10 @@ fn text(msg: impl Into<String>) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::success(vec![ContentBlock::text(msg.into())]))
 }
 
+fn parse_ids(ids: &[String]) -> Result<Vec<TicketId>> {
+    ids.iter().map(|s| TicketId::parse(s)).collect()
+}
+
 fn fail(e: anyhow::Error) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::error(vec![ContentBlock::text(format!("Erreur : {e:#}"))]))
 }
@@ -177,6 +197,7 @@ impl TicketServer {
     #[tool(description = "Crée un ticket (id suivant, dossier, fichiers, board). Retourne l'id, le dossier et la branche à utiliser.")]
     fn ticket_create(&self, Parameters(p): Parameters<CreateParams>) -> Result<CallToolResult, McpError> {
         let project = tryt!(self.project(p.project.as_deref()));
+        let blocked_by = tryt!(parse_ids(&p.blocked_by));
         let summary = tryt!(project.create(CreateInput {
             title: p.title,
             kind: p.kind,
@@ -184,6 +205,7 @@ impl TicketServer {
             projects: p.projects,
             description: p.description,
             acceptance: p.acceptance,
+            blocked_by,
         }));
         json(&summary)
     }
@@ -210,6 +232,15 @@ impl TicketServer {
         json(&summary)
     }
 
+    #[tool(description = "Ajoute (ou retire avec remove=true) des dépendances : le ticket « id » est bloqué par les tickets « on » tant qu'ils ne sont pas done ou cancelled. Refuse les ids inconnus, l'auto-référence et les cycles. Consigné dans le journal.")]
+    fn ticket_depend(&self, Parameters(p): Parameters<DependParams>) -> Result<CallToolResult, McpError> {
+        let project = tryt!(self.project(p.project.as_deref()));
+        let id = tryt!(TicketId::parse(&p.id));
+        let on = tryt!(parse_ids(&p.on));
+        let summary = tryt!(project.depend(id, &on, p.remove));
+        json(&summary)
+    }
+
     #[tool(description = "Ajoute une entrée d'avancement datée au journal du ticket. « next_step » est obligatoire : c'est le point de reprise.")]
     fn ticket_log(&self, Parameters(p): Parameters<LogParams>) -> Result<CallToolResult, McpError> {
         let project = tryt!(self.project(p.project.as_deref()));
@@ -226,14 +257,14 @@ impl TicketServer {
         text(format!("Décision {n} consignée."))
     }
 
-    #[tool(description = "Liste les tickets, triés par priorité puis id, avec filtres optionnels par statut et projet de dev.")]
+    #[tool(description = "Liste les tickets, triés par priorité puis id, avec filtres optionnels par statut et projet de dev. Chaque ticket expose blocked_by (dépendances déclarées) et open_blockers (celles encore ouvertes).")]
     fn ticket_list(&self, Parameters(p): Parameters<ListParams>) -> Result<CallToolResult, McpError> {
         let project = tryt!(self.project(p.project.as_deref()));
         let list = tryt!(project.list(p.status, p.dev_project.as_deref()));
         json(&list)
     }
 
-    #[tool(description = "Point d'entrée pour reprendre un ticket : métadonnées, chemins des fichiers, dernière « prochaine étape », branche attendue et branche courante.")]
+    #[tool(description = "Point d'entrée pour reprendre un ticket : métadonnées (dont blocked_by et open_blockers), chemins des fichiers, dernière « prochaine étape », branche attendue et branche courante.")]
     fn ticket_context(&self, Parameters(p): Parameters<IdParams>) -> Result<CallToolResult, McpError> {
         let project = tryt!(self.project(p.project.as_deref()));
         let id = tryt!(TicketId::parse(&p.id));

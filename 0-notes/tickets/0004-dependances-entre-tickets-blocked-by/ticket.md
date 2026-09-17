@@ -2,7 +2,7 @@
 id: "0004"
 title: "Dépendances entre tickets (blocked_by)"
 type: feat
-status: todo
+status: done
 priority: p3
 projects: [core, mcp]
 created: 2026-09-17
@@ -15,8 +15,8 @@ updated: 2026-09-17
 
 ## Critères d'acceptation
 
-- [ ] Champ blocked_by validé (ids existants, pas de cycle)
-- [ ] Board indiquant les tickets bloqués par un ticket ouvert
+- [x] Champ blocked_by validé (ids existants, pas de cycle)
+- [x] Board indiquant les tickets bloqués par un ticket ouvert
 
 ## Notes
 

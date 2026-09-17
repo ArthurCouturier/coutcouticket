@@ -35,6 +35,14 @@ documentation technique et la vue d'ensemble du projet.
 
 `todo` → `in-progress` → `review` → `done`, avec `blocked` et `cancelled`.
 
+## Dépendances
+
+Un ticket peut attendre d'autres tickets (`blocked_by` dans le frontmatter), posé via
+`ticket_create`/`ticket_depend` ou `coutcouticket new --blocked-by 3` /
+`coutcouticket depend 13 --on 3 [--remove]`. Ids inconnus et cycles sont refusés.
+`BOARD.md` affiche, pour chaque ticket ouvert, les dépendances encore ouvertes
+(colonne « Bloqué par ») ; une dépendance `done` ou `cancelled` ne bloque plus.
+
 ## Convention git (stricte)
 
 - Branche : `<type>/<id>-<slug>`, ex. `feat/0013-add-thing-to-etc`.
