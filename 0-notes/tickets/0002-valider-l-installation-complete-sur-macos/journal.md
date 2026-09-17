@@ -27,3 +27,15 @@ Critère 2 vérifié. `claude mcp list` : `coutcouticket` en HTTP vers http://12
 Défaut constaté : relancer `setup-claude --apply` quand le serveur existe déjà échoue (« MCP server coutcouticket already exists in user config ») et propose une commande manuelle qui échouerait de la même façon. Aucune perte, l'enregistrement reste intact. Hors périmètre de ce ticket : à traiter dans un ticket fix séparé (src/main.rs, Cmd::SetupClaude).
 
 **Prochaine étape :** Commiter ticket.md et journal.md sur la branche ci/0002 et vérifier que le hook ajoute le trailer « Ticket: 0002 » (critère 5, cas terminal).
+
+## 2026-09-17 14:37 — avancement
+
+Critère 3 : hook testé à la main, reste l'observation dans une vraie session (non coché).
+- Pas de contexte vu au début de la session précédente : normal, le plugin a été installé après son démarrage.
+- La commande exacte de `plugin/hooks/hooks.json`, alimentée avec le JSON SessionStart (cwd = racine), renvoie un `additionalContext` valide (code 0) : projet, paramètre `project`, compteurs, branche → ticket 0002, prochaine étape.
+- cwd hors projet (/tmp) : aucune sortie, code 0. cwd = src/ : la racine est bien retrouvée.
+- La copie installée (~/.claude/plugins/cache/coutcouticket/coutcouticket/0.1.0/hooks/hooks.json) est identique à la source.
+- À noter : `|| true` masque toute erreur du hook ; un échec ne se verrait que par l'absence de contexte.
+Critère 5, client graphique : risque signalé. Une app lancée par le Dock hérite du PATH de launchd (/usr/bin:/bin:/usr/sbin:/sbin), sans ~/.cargo/bin ni /opt/homebrew/bin. Les hooks git échoueraient alors avec « coutcouticket introuvable dans le PATH ». Pas encore observé : à confirmer avec le client de l'utilisateur. Ticket fix à créer à la clôture (par ex. chemin absolu du binaire écrit dans les hooks par `init`).
+
+**Prochaine étape :** Au redémarrage de Claude Code dans ce dossier : vérifier que le contexte « [coutcouticket] Projet : … » est injecté avec le ticket 0002 et cette prochaine étape, puis cocher le critère 3 et passer au critère 4 (BOARD.md régénéré en moins de 2 s après une modification manuelle).
