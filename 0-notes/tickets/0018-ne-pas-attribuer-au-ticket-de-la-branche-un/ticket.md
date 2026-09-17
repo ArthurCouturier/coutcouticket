@@ -2,7 +2,7 @@
 id: "0018"
 title: "Ne pas attribuer au ticket de la branche un commit de notes d'autres tickets"
 type: fix
-status: todo
+status: in-progress
 priority: p2
 projects: [core]
 created: 2026-09-17

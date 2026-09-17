@@ -191,6 +191,79 @@ fn workflow_complet() {
 }
 
 #[test]
+fn trailers_des_commits_de_notes() {
+    let env = Env::new();
+    env.ok(&["init", "--no-gitignore"]);
+    env.ok(&["new", "-t", "Un"]);
+    env.ok(&["new", "-t", "Deux"]);
+    env.ok(&["new", "-t", "Trois"]);
+    env.git_ok(&["add", "-A"]);
+    env.git_ok(&["commit", "-q", "-m", "init"]);
+    env.ok(&["start", "1"]);
+    let last_msg = || env.git_ok(&["log", "-1", "--pretty=%B"]);
+    let trailers = || -> Vec<String> {
+        last_msg().lines().filter(|l| l.starts_with("Ticket:")).map(String::from).collect()
+    };
+
+    // --- code + notes du ticket de la branche : trailer de la branche
+    fs::write(env.repo.join("code.rs"), "fn main() {}").unwrap();
+    env.git_ok(&["add", "-A"]);
+    env.git_ok(&["commit", "-q", "-m", "code"]);
+    assert_eq!(trailers(), ["Ticket: 0001"]);
+
+    // --- notes d'autres tickets seulement : leurs trailers, pas celui de la branche
+    env.ok(&["log", "2", "-t", "Avancée", "-n", "Suite"]);
+    env.ok(&["status", "3", "done"]);
+    env.git_ok(&["add", "-A"]);
+    env.git_ok(&["commit", "-q", "-m", "notes des autres"]);
+    assert_eq!(trailers(), ["Ticket: 0002", "Ticket: 0003"]);
+    let committed = env.git_ok(&["show", "--name-only", "--pretty=format:", "HEAD"]);
+    assert!(committed.contains("0-global/BOARD.md"), "{committed}");
+
+    // --- idem avec commit -a (index temporaire de git)
+    env.ok(&["log", "2", "-t", "Encore", "-n", "Suite"]);
+    env.git_ok(&["commit", "-q", "-a", "-m", "notes via -a"]);
+    assert_eq!(trailers(), ["Ticket: 0002"]);
+
+    // --- doc seule : relève du ticket de la branche
+    fs::write(env.notes().join("doc/INDEX.md"), "# Index\n").unwrap();
+    env.git_ok(&["commit", "-q", "-a", "-m", "doc"]);
+    assert_eq!(trailers(), ["Ticket: 0001"]);
+
+    // --- notes du ticket de la branche avec celles d'un autre : trailer de la branche
+    env.ok(&["log", "1", "-t", "Jalon", "-n", "Suite"]);
+    env.ok(&["log", "2", "-t", "Jalon", "-n", "Suite"]);
+    env.git_ok(&["commit", "-q", "-a", "-m", "notes mêlées"]);
+    assert_eq!(trailers(), ["Ticket: 0001"]);
+
+    // --- trailer déjà écrit : message inchangé
+    fs::write(env.repo.join("autre.rs"), "fn autre() {}").unwrap();
+    env.git_ok(&["add", "-A"]);
+    env.git_ok(&["commit", "-q", "-m", "pour trois\n\nTicket: 0003"]);
+    assert_eq!(trailers(), ["Ticket: 0003"]);
+
+    // --- commit mal attribué (ancien comportement) : files le filtre quand même
+    env.ok(&["log", "3", "-t", "Note tardive", "-n", "Aucune"]);
+    env.git_ok(&["commit", "-q", "-a", "-m", "mal attribué\n\nTicket: 0001"]);
+
+    // --- files : ni notes d'autres tickets ni BOARD.md, commités ou non
+    env.ok(&["log", "2", "-t", "Non commité", "-n", "Suite"]);
+    fs::write(env.repo.join("code.rs"), "fn main() { }").unwrap();
+    let files1 = env.ok(&["files", "1"]);
+    for f in ["code.rs", "0-notes/tickets/0001-un/ticket.md", "0-notes/tickets/0001-un/journal.md", "0-notes/doc/INDEX.md"] {
+        assert!(files1.contains(f), "{f} absent :\n{files1}");
+    }
+    for f in ["0002-deux", "0003-trois", "BOARD.md", "autre.rs"] {
+        assert!(!files1.contains(f), "{f} présent :\n{files1}");
+    }
+    let files2 = env.ok(&["files", "2"]);
+    assert!(files2.contains("0-notes/tickets/0002-deux/journal.md"), "{files2}");
+    assert!(!files2.contains("0001-un") && !files2.contains("0003-trois") && !files2.contains("BOARD.md"), "{files2}");
+    let files3 = env.ok(&["files", "3"]);
+    assert!(files3.contains("0-notes/tickets/0003-trois/ticket.md") && files3.contains("autre.rs"), "{files3}");
+}
+
+#[test]
 fn dependances_cli() {
     let env = Env::new();
     env.ok(&["init"]);
