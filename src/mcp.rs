@@ -264,7 +264,7 @@ impl TicketServer {
         json(&list)
     }
 
-    #[tool(description = "Point d'entrée pour reprendre un ticket : métadonnées (dont blocked_by et open_blockers), chemins des fichiers, dernière « prochaine étape », branche attendue et branche courante.")]
+    #[tool(description = "Point d'entrée pour reprendre un ticket : métadonnées (dont blocked_by et open_blockers), chemins des fichiers, dernière « prochaine étape », branche attendue et branche courante. Si git échoue (binaire absent, licence Xcode…), current_branch vaut null et git_error donne la commande, le code, la sortie d'erreur et la correction.")]
     fn ticket_context(&self, Parameters(p): Parameters<IdParams>) -> Result<CallToolResult, McpError> {
         let project = tryt!(self.project(p.project.as_deref()));
         let id = tryt!(TicketId::parse(&p.id));

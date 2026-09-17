@@ -697,3 +697,121 @@ fn setup_claude_idempotent() {
     assert!(!out.status.success());
     assert!(stderr(&out).contains("« claude » introuvable"), "{}", stderr(&out));
 }
+
+// ---------------------------------------------------------------------------
+// git en échec (faux binaire via COUTCOUTICKET_GIT_BIN)
+// ---------------------------------------------------------------------------
+
+/// Reproduit /usr/bin/git sous macOS quand la licence Xcode n'est pas acceptée.
+const FAKE_GIT_XCODE: &str = "#!/bin/sh
+echo \"You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license' from within a Terminal window to review and agree to the Xcode and Apple SDKs license.\" >&2
+exit 69
+";
+
+/// Vrai git pour rev-parse (le dépôt est reconnu), panne générique pour le reste.
+const FAKE_GIT_BROKEN: &str = "#!/bin/sh
+case \" $* \" in
+  *\" rev-parse \"*) exec git \"$@\" ;;
+esac
+echo \"fatal: panne simulée\" >&2
+exit 128
+";
+
+#[test]
+fn git_en_echec() {
+    use std::os::unix::fs::PermissionsExt;
+    let env = Env::new();
+    env.ok(&["init"]);
+    env.ok(&["new", "-t", "Diagnostiquer git"]);
+    let fake = |name: &str, script: &str| {
+        let path = env.home.join(name);
+        fs::write(&path, script).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    };
+    let xcode = fake("git-xcode", FAKE_GIT_XCODE);
+    let broken = fake("git-casse", FAKE_GIT_BROKEN);
+    let with_git = |bin: &Path, args: &[&str]| env.cmd(BIN).args(args).env("COUTCOUTICKET_GIT_BIN", bin).stdin(Stdio::null()).output().unwrap();
+
+    // --- licence Xcode : files échoue avec commande, code, stderr et correction
+    let out = with_git(&xcode, &["files", "1"]);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(err.contains("« git rev-parse --is-inside-work-tree » a échoué (code 69)"), "{err}");
+    assert!(err.contains("You have not agreed") && err.contains("sudo xcodebuild -license"), "{err}");
+    assert!(err.contains("sudo xcode-select -s /Library/Developer/CommandLineTools"), "{err}");
+    assert!(!err.contains("pas un dépôt git"), "diagnostic erroné : {err}");
+
+    // --- show : l'erreur est exposée (git_error), pas un simple null
+    let out = with_git(&xcode, &["show", "1", "--json"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let ctx: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert!(ctx["current_branch"].is_null(), "{ctx}");
+    let git_error = ctx["git_error"].as_str().unwrap_or_default();
+    assert!(git_error.contains("code 69") && git_error.contains("sudo xcodebuild -license"), "{ctx}");
+    let out = with_git(&xcode, &["show", "1"]);
+    assert!(stdout(&out).contains("git en échec"), "{}", stdout(&out));
+    let ok: serde_json::Value = serde_json::from_str(&env.ok(&["show", "1", "--json"])).unwrap();
+    assert!(ok["git_error"].is_null() && ok["current_branch"] == "main", "{ok}");
+
+    // --- MCP : ticket_context porte git_error
+    let mut child = env
+        .cmd(BIN)
+        .arg("mcp")
+        .env("COUTCOUTICKET_GIT_BIN", &xcode)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut reader = BufReader::new(child.stdout.take().unwrap());
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}));
+    recv(&mut reader, 1);
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
+    let repo = env.repo.display().to_string();
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ticket_context","arguments":{"project":repo,"id":"1"}}}));
+    let ctx = recv(&mut reader, 2).to_string();
+    assert!(ctx.contains("git_error") && ctx.contains("code 69"), "{ctx}");
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+
+    // --- hook SessionStart : message clair, le hook ne casse pas
+    let out = with_git(&xcode, &["hook", "session-start"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("git en échec") && stdout(&out).contains("xcodebuild -license"), "{}", stdout(&out));
+
+    // --- init : avertissement, notes intactes, hooks et .gitignore non traités
+    let out = with_git(&xcode, &["init"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = format!("{}{}", stdout(&out), stderr(&out));
+    assert!(text.contains("code 69") && text.contains("relancer init une fois git réparé"), "{text}");
+
+    // --- autre code d'échec, dépôt reconnu : la commande fautive est nommée
+    let out = with_git(&broken, &["files", "1"]);
+    assert!(!out.status.success());
+    let err = stderr(&out);
+    assert!(err.contains("« git log --all") && err.contains("(code 128) : fatal: panne simulée"), "{err}");
+    assert!(!err.contains("Correction"), "{err}");
+    let out = with_git(&broken, &["start", "1"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("« git show-ref --verify --quiet refs/heads/feat/0001-diagnostiquer-git » a échoué (code 128)"), "{}", stderr(&out));
+
+    // --- binaire introuvable
+    let out = with_git(&env.home.join("inexistant"), &["files", "1"]);
+    assert!(!out.status.success());
+    assert!(stderr(&out).contains("introuvable") && stderr(&out).contains("xcode-select --install"), "{}", stderr(&out));
+
+    // --- vrai dossier hors dépôt : diagnostic inchangé
+    let hors = env.home.join("hors-depot");
+    fs::create_dir_all(&hors).unwrap();
+    let out = env.cmd(BIN).args(["init"]).current_dir(&hors).output().unwrap();
+    assert!(out.status.success(), "{}", stderr(&out));
+    env.cmd(BIN).args(["new", "-t", "Sans git"]).current_dir(&hors).output().unwrap();
+    let out = env.cmd(BIN).args(["files", "1"]).current_dir(&hors).output().unwrap();
+    assert!(stderr(&out).contains("n'est pas un dépôt git"), "{}", stderr(&out));
+    let out = env.cmd(BIN).args(["show", "1", "--json"]).current_dir(&hors).output().unwrap();
+    let ctx: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert!(ctx["git_error"].is_null() && ctx["current_branch"].is_null(), "{ctx}");
+}

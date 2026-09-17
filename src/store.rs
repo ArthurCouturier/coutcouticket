@@ -88,7 +88,10 @@ pub struct TicketContext {
     pub journal_entries: usize,
     pub decisions: usize,
     pub on_ticket_branch: bool,
+    /// None si HEAD détaché, hors dépôt ou si git échoue (voir `git_error`).
     pub current_branch: Option<String>,
+    /// Échec de git (commande, code, stderr, correction) : `current_branch` n'est alors pas fiable.
+    pub git_error: Option<String>,
 }
 
 fn today() -> NaiveDate {
@@ -317,10 +320,15 @@ impl Project {
         let journal = fs::read_to_string(&journal_path).unwrap_or_default();
         let decisions = fs::read_to_string(&decisions_path).unwrap_or_default();
         let summary = self.summary(&t, &scan.tickets);
-        let current_branch = if git::is_repo(&self.root) { git::current_branch(&self.root)? } else { None };
+        // Un git en échec ne bloque pas la reprise, mais il est signalé.
+        let (current_branch, git_error) = match git::current_branch_if_repo(&self.root) {
+            Ok(b) => (b, None),
+            Err(e) => (None, Some(format!("{e:#}"))),
+        };
         Ok(TicketContext {
             on_ticket_branch: current_branch.as_deref() == Some(summary.branch.as_str()),
             current_branch,
+            git_error,
             ticket_file: self.rel(&t.path.join(TICKET_FILE)),
             journal_file: self.rel(&journal_path),
             decisions_file: self.rel(&decisions_path),
@@ -333,8 +341,8 @@ impl Project {
 
     pub fn files(&self, id: TicketId) -> Result<(Vec<String>, Vec<String>)> {
         let t = self.find(id)?;
-        if !git::is_repo(&self.root) {
-            bail!("le projet n'est pas un dépôt git");
+        if !git::is_repo(&self.root)? {
+            bail!("le projet n'est pas un dépôt git : lancer « git init » à sa racine pour suivre les fichiers des tickets");
         }
         let id_str = t.doc.front.id.format(self.cfg.id_width);
         let committed = git::files_for_ticket(&self.root, &id_str)?;
@@ -454,7 +462,7 @@ impl Project {
                 t.doc.front.status
             );
         }
-        if !git::is_repo(&self.root) {
+        if !git::is_repo(&self.root)? {
             bail!("le projet n'est pas un dépôt git : impossible de créer la branche");
         }
         let branch = naming::branch_name(&t.doc.front.kind, &t.dir_name);

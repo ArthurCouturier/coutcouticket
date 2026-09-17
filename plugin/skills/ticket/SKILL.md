@@ -60,6 +60,8 @@ agir. Ne refais jamais à la main ce qu'un outil fait.
 ## Démarrer / reprendre
 
 1. `ticket_context` : lire la « prochaine étape », la branche attendue, la branche courante.
+   `git_error` renseigné : git est en panne, le signaler (avec la correction indiquée)
+   au lieu de conclure sur la branche.
 2. Lire `ticket.md`, puis `decisions.md` (ne pas remettre en cause une décision
    consignée sans le dire explicitement), puis la fin de `journal.md`.
 3. Lire `0-notes/doc/INDEX.md` et les pages utiles avant d'explorer le code.

@@ -2,7 +2,7 @@
 id: "0019"
 title: "Distinguer un échec de git d'un dossier hors dépôt"
 type: fix
-status: todo
+status: done
 priority: p2
 projects: [core]
 created: 2026-09-17
@@ -17,10 +17,10 @@ Objectif : quand git échoue (binaire absent, code de sortie inattendu, stderr n
 
 ## Critères d'acceptation
 
-- [ ] git en échec (code ≠ 0 hors cas « pas un dépôt ») : message avec commande, code et stderr
-- [ ] Licence Xcode non acceptée : correction `sudo xcodebuild -license` proposée
-- [ ] ticket_context expose l'erreur git au lieu d'un simple null
-- [ ] Tests avec un faux binaire git
+- [x] git en échec (code ≠ 0 hors cas « pas un dépôt ») : message avec commande, code et stderr
+- [x] Licence Xcode non acceptée : correction `sudo xcodebuild -license` proposée
+- [x] ticket_context expose l'erreur git au lieu d'un simple null
+- [x] Tests avec un faux binaire git
 
 ## Notes
 

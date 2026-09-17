@@ -115,8 +115,10 @@ pub fn session_context(project: &Project) -> Result<String> {
     if !scan.problems.is_empty() {
         lines.push(format!("⚠️ {} problème(s) dans les notes : lancer notes_validate.", scan.problems.len()));
     }
-    if git::is_repo(&project.root) {
-        if let Some(branch) = git::current_branch(&project.root)? {
+    match git::current_branch_if_repo(&project.root) {
+        Err(e) => lines.push(format!("⚠️ git en échec, branche courante inconnue : {e:#}")),
+        Ok(None) => {}
+        Ok(Some(branch)) => {
             match naming::classify_branch(&branch, &project.cfg) {
                 Ok(BranchKind::Ticket { id, .. }) => match scan.tickets.iter().find(|t| t.doc.front.id == id) {
                     Some(t) => {
