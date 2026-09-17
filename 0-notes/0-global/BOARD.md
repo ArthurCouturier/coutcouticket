@@ -1,7 +1,7 @@
 <!-- GÉNÉRÉ par coutcouticket — ne pas éditer. Régénérer : coutcouticket board -->
 # Tableau des tickets — coutcouticket
 
-**12 ouvert(s)** sur 25 · 0 en cours · 2 en revue · 0 bloqué · 10 à faire · 13 terminé · 0 annulé
+**13 ouvert(s)** sur 26 · 0 en cours · 2 en revue · 0 bloqué · 11 à faire · 13 terminé · 0 annulé
 
 ## En cours (0)
 
@@ -18,10 +18,11 @@ _Aucun ticket._
 
 _Aucun ticket._
 
-## À faire (10)
+## À faire (11)
 
 | ID | Titre | Type | Prio | Projets | Bloqué par | MAJ |
 |----|-------|------|------|---------|------------|-----|
+| [0026](../tickets/0026-panneau-web-de-visualisation-des-tickets/ticket.md) | Panneau web de visualisation des tickets | feat | p2 | daemon, core | — | 2026-09-17 |
 | [0010](../tickets/0010-a-valider-commande-doctor-de-diagnostic-complet/ticket.md) | À valider : commande doctor de diagnostic complet | feat | p3 | core | — | 2026-09-17 |
 | [0012](../tickets/0012-a-valider-sauvegarde-des-notes-hors-depot/ticket.md) | À valider : sauvegarde des notes hors dépôt | feat | p3 | core, daemon | — | 2026-09-17 |
 | [0013](../tickets/0013-a-valider-demarrer-un-ticket-dans-un-worktree-git/ticket.md) | À valider : démarrer un ticket dans un worktree git | feat | p3 | core, mcp, plugin | — | 2026-09-17 |
@@ -59,7 +60,7 @@ _Aucun ticket._
 
 | Projet | En cours | En revue | Bloqué | À faire | Terminé | Annulé |
 |--------|---|---|---|---|---|---|
-| core | 0 | 1 | 0 | 8 | 11 | 0 |
-| daemon | 0 | 1 | 0 | 3 | 4 | 0 |
+| core | 0 | 1 | 0 | 9 | 11 | 0 |
+| daemon | 0 | 1 | 0 | 4 | 4 | 0 |
 | mcp | 0 | 0 | 0 | 3 | 3 | 0 |
 | plugin | 0 | 0 | 0 | 2 | 3 | 0 |
