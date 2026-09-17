@@ -83,3 +83,14 @@ Le 0001 reste en review : son journal subordonne le passage en done à la valida
 Critère 5 revérifié après le correctif 0006 (commit 81f8e7f, binaire réinstallé, `init` relancé ici) et coché. `env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin git commit --allow-empty -m "test PATH graphique"` : code 0, trailer « Ticket: 0006 » ajouté, car le commit a été fait sur la branche du 0006. Le commit vide de test (948f7d9) a été retiré ensuite avec `git reset --soft HEAD~1`, après avoir vérifié qu'il était vide.
 
 **Prochaine étape :** Critère 6 : obtenir de l'utilisateur le chemin exact du projet existant, puis y lancer `coutcouticket init` (git status propre d'abord ; relever CLAUDE.md et les hooks existants, husky ou lefthook compris, et vérifier qu'ils sont intacts). Critère 1 en dernier, après la déconnexion macOS faite par l'utilisateur.
+
+## 2026-09-17 14:51 — avancement
+
+Critère 6 vérifié et coché, sur /Users/arthurcouturier/dev/je-taime-app (branche develop). L'utilisateur a lancé `init` lui-même à 14:47:00 : la propreté de `git status` avant init n'a donc pas pu être vérifiée, et l'état a été reconstitué après coup.
+- Fichiers suivis : seul `.gitignore` est modifié (`design/` → `/design`, avec un commentaire sur un lien symbolique iCloud). Sa date de modification (11:23:58) est antérieure à init : c'est une modification de l'utilisateur, non commitée, et pas un effet d'init, qui ne touche pas au .gitignore.
+- Créés par init, non suivis : `.coutcouticket.toml`, `0-notes/` (BOARD, README, doc/INDEX, tickets/.gitkeep), `CLAUDE.md` (en-tête et bloc seulement : il n'y avait pas de CLAUDE.md avant).
+- Hooks : ni `core.hooksPath`, ni husky, lefthook ou simple-git-hooks ; `.git/hooks` ne contenait que des exemples. Aucun hook tiers écrasé.
+- La première exécution a eu lieu avec l'ancien binaire (réinstallé à 14:47:40) : hooks à l'ancien gabarit. `init` relancé avec le binaire corrigé : seuls les 2 hooks sont mis à jour et pointent vers ~/.cargo/bin/coutcouticket ; `git status` est inchangé par ailleurs.
+Reste le critère 1 seulement.
+
+**Prochaine étape :** Après la déconnexion macOS faite par l'utilisateur : `ps -o pid,lstart -p $(pgrep -f 'coutcouticket daemon run')` doit montrer un PID et une heure postérieurs à la reconnexion, et `coutcouticket daemon status` doit répondre ok. Cocher alors le critère 1 et clôturer le 0002, puis passer le 0001 en done.

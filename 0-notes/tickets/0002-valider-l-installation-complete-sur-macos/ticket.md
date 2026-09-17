@@ -20,7 +20,7 @@ Tout a été testé sous Linux (inotify). Le LaunchAgent, FSEvents, l'enregistre
 - [x] Plugin installé : le contexte coutcouticket est injecté au démarrage de session
 - [x] Édition manuelle d'un ticket : BOARD.md régénéré en moins de 2 s (FSEvents)
 - [x] Hooks git fonctionnels depuis le terminal et depuis le client git habituel (PATH)
-- [ ] init lancé sur un vrai projet existant sans perte de contenu
+- [x] init lancé sur un vrai projet existant sans perte de contenu
 
 ## Notes
 
