@@ -192,6 +192,9 @@ Lecture seule, servi par le démon ; décisions D1 et D2 du ticket 0026.
   la cause retenue. Ne pas le réintroduire : le démon est événementiel et ne consomme
   rien au repos, le bridage ne fait que retarder le démarrage. Le plist installé n'est
   réécrit que par `daemon install` (à relancer après toute modification du gabarit).
+  `daemon install` fait `bootout` puis `bootstrap`, puis attend que `/health` réponde
+  (10 s au plus, `wait_health`, commune avec Windows) : launchctl rend la main avant que
+  le nouveau démon écoute, et une commande enchaînée (`daemon install && ui`) échouait.
 - Windows (module `daemon::windows`, XML dans `windows_task_xml`) : tâche planifiée
   `coutcouticket-daemon` (surchargeable par `COUTCOUTICKET_DAEMON_TASK`) à la racine du
   planificateur, créée par `schtasks /Create /XML` (fichier UTF-16 avec BOM,

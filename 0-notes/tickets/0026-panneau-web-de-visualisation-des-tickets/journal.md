@@ -59,3 +59,21 @@ Panneau implémenté (commit 23689d4), sécurité consignée en D2.
 ## 2026-09-17 17:58 — statut : in-progress → review
 
 Implémentation terminée et prouvée sous macOS ; le critère Windows attend la CI windows-latest.
+
+## 2026-09-17 18:04 — avancement
+
+Essai réel par l'utilisateur : `cargo install --path . && coutcouticket daemon install && coutcouticket ui` a échoué avec « connexion refusée ». Sous macOS, `launchctl bootstrap` rend la main avant que le nouveau démon écoute (environ 20 ms plus tard, d'après daemon.log). Juste après, `ui --print` fonctionnait.
+Correctif 4b89b43 : `daemon install` sous macOS attend maintenant la réponse de `/health` (10 s au plus), comme le faisait déjà Windows. La boucle est factorisée dans `wait_health`.
+CI de la PR #2 verte sous windows-latest et macos-15 : run 35243734552, puis 35244007995 après le correctif. Le test `panneau_web` passe sous Windows.
+
+**Prochaine étape :** L'utilisateur réinstalle (`cargo install --path . && coutcouticket daemon install && coutcouticket ui`) et donne son avis sur le panneau. Si c'est OK : cocher le critère Windows (CI verte), relecture, `done`, fusion dans main.
+
+## 2026-09-17 18:07 — avancement
+
+L'utilisateur confirme que `coutcouticket ui` fonctionne sur son Mac après réinstallation. Critère Windows coché sur la foi de la CI (runs 35243734552 et 35244007995, test `panneau_web` vert sous windows-latest). L'ouverture réelle du navigateur sous Windows (`cmd /C start`) n'a pas été essayée à la main.
+
+**Prochaine étape :** Aucune (suites possibles : actions depuis le panneau avec protection CSRF, rendu Markdown enrichi, repli OVERVIEW.html)
+
+## 2026-09-17 18:08 — statut : review → done
+
+Panneau web kanban en lecture seule servi par le démon (`coutcouticket ui`) : mises à jour en direct (SSE), connexion par code à usage unique et cookie, validé sur macOS par l'utilisateur et par la CI Windows. Relecture de clôture : ses corrections de doc et de notes sont appliquées.

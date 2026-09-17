@@ -2,7 +2,7 @@
 id: "0026"
 title: "Panneau web de visualisation des tickets"
 type: feat
-status: review
+status: done
 priority: p2
 projects: [daemon, core]
 created: 2026-09-17
@@ -29,11 +29,12 @@ Recommandation : option 1, avec une v1 en lecture seule. L'option 2 peut servir 
 - [x] Mise à jour sans rechargement manuel quand une note change, sans sondage périodique
 - [x] Aucun processus supplémentaire au repos, et aucune dépendance JS externe ni CDN : page embarquée dans le binaire
 - [x] Accès limité à 127.0.0.1 et protégé (jeton, protection contre le rebinding DNS et le CSRF), avec tests
-- [ ] Fonctionne sous macOS et Windows
+- [x] Fonctionne sous macOS et Windows
 
 ## Notes
 
 - Preuves : `tests/e2e.rs::panneau_web` ; tests unitaires `ui::tests`, `overview::tests::detail_limite_aux_projets_enregistres`, `store::tests::detail_*` ; vérification dans Chrome headless (journal du 2026-09-17).
 - Lien vers le ticket.md : chemin absolu affiché avec un bouton « Copier », car les navigateurs bloquent `file://` depuis une page http (D2).
-- Windows : le code est prévu pour Windows (`cmd /C start`, aucun `cfg` propre à Unix), mais il n'a pas été compilé pour Windows en local (cible absente). À confirmer par la CI `windows-latest` (`panneau_web` y tourne).
+- Windows : confirmé par la CI windows-latest (runs 35243734552 et 35244007995, `panneau_web` vert). L'ouverture réelle du navigateur par `cmd /C start` n'a pas été essayée à la main.
+- macOS : validé par l'utilisateur le 2026-09-17 (`cargo install`, `daemon install`, puis `coutcouticket ui`).
 
