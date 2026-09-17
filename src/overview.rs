@@ -13,8 +13,8 @@ use serde::Serialize;
 
 use crate::config::{CONFIG_FILE, global_dir};
 use crate::fsutil;
-use crate::model::{Priority, Status};
-use crate::store::{Project, TICKET_FILE, TicketSummary};
+use crate::model::{Priority, Status, TicketId};
+use crate::store::{Project, TICKET_FILE, TicketDetail, TicketSummary};
 
 pub const OVERVIEW_FILE: &str = "OVERVIEW.md";
 
@@ -123,6 +123,24 @@ pub fn build(roots: &[PathBuf], filter: Filter) -> Result<Overview> {
         key(a).cmp(&key(b))
     });
     Ok(out)
+}
+
+/// Détail d'un ticket (panneau web). `project_path` doit être exactement l'une des
+/// racines `roots` (le registre), telle que la vue l'affiche : aucun autre chemin
+/// n'est ouvert. `None` : projet non enregistré.
+pub fn detail(roots: &[PathBuf], project_path: &str, id: TicketId) -> Result<Option<TicketDetail>> {
+    let Some(root) = roots.iter().find(|r| r.display().to_string() == project_path) else {
+        return Ok(None);
+    };
+    if !root.join(CONFIG_FILE).is_file() {
+        bail!("projet introuvable ({CONFIG_FILE} absent) : le retirer avec « coutcouticket projects remove {project_path} »");
+    }
+    let project = Project::open(root)?;
+    // `open` remonte l'arborescence : ne jamais lire un autre projet que la racine enregistrée.
+    if project.root != *root {
+        bail!("{project_path} n'est pas la racine d'un projet : lancer « coutcouticket -C {project_path} init »");
+    }
+    project.detail(id).map(Some)
 }
 
 fn cell(s: &str) -> String {
@@ -337,5 +355,32 @@ mod tests {
         assert!(row.contains(&format!("[0001](<{}>)", link_path(&ticket))), "{row}");
         assert!(row.starts_with("| al pha | [0001]"), "{row}");
         assert!(md.contains("## En cours (0)\n\n_Aucun ticket._"), "{md}");
+    }
+
+    #[test]
+    fn detail_limite_aux_projets_enregistres() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = project(tmp.path(), "alpha");
+        new(&a, "Un", Priority::P1, &[]);
+        let path = a.root.display().to_string();
+        let roots = vec![a.root.clone()];
+        let d = detail(&roots, &path, TicketId(1)).unwrap().expect("projet enregistré");
+        assert!(d.ticket.contains("## Description"), "{}", d.ticket);
+        // Hors registre, y compris un chemin qui mène au même dossier.
+        let b = project(tmp.path(), "beta");
+        new(&b, "Secret", Priority::P1, &[]);
+        assert!(detail(&roots, &b.root.display().to_string(), TicketId(1)).unwrap().is_none());
+        let detour = format!("{path}{}..{}alpha", std::path::MAIN_SEPARATOR, std::path::MAIN_SEPARATOR);
+        assert!(detail(&roots, &detour, TicketId(1)).unwrap().is_none());
+        assert!(detail(&roots, "", TicketId(1)).unwrap().is_none());
+        assert!(detail(&roots, &path, TicketId(7)).unwrap_err().to_string().contains("introuvable"));
+        // Racine enregistrée sans config, dans un projet parent : jamais le parent.
+        let inner = a.root.join("sous-dossier");
+        fs::create_dir_all(&inner).unwrap();
+        let inner_path = inner.display().to_string();
+        let err = detail(std::slice::from_ref(&inner), &inner_path, TicketId(1)).unwrap_err().to_string();
+        assert!(err.contains("introuvable"), "{err}");
+        fs::write(inner.join(CONFIG_FILE), "cle_inconnue = 1\n").unwrap();
+        assert!(detail(&[inner], &inner_path, TicketId(1)).is_err());
     }
 }

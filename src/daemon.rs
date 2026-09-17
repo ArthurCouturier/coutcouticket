@@ -21,6 +21,7 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
+use tokio::sync::broadcast;
 use notify::{RecursiveMode, Watcher};
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
@@ -30,12 +31,13 @@ use tokio_util::sync::CancellationToken;
 use crate::config::{Config, DaemonConfig, Registry};
 use crate::mcp::{Mode, TicketServer};
 use crate::overview;
+use crate::ui;
 use crate::store::Project;
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const LAUNCHD_LABEL: &str = "app.coutcouticket.daemon";
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
@@ -138,14 +140,21 @@ async fn serve(started: Instant, pid: Option<PathBuf>) -> Result<()> {
         }
     });
 
+    // Panneau web : le watcher publie un message par lot de changements ; sans
+    // onglet ouvert, personne n'écoute et l'envoi échoue sans coût.
+    let (events, _) = broadcast::channel::<()>(16);
+    let panel = ui::UiState::new(cfg.port, events.clone(), ct.child_token())?;
+
     let app = Router::new()
         .nest_service("/mcp", service)
+        .merge(ui::code_router(panel.clone()))
         .layer(auth)
+        .merge(ui::router(panel))
         .route("/health", get(|| async { format!("coutcouticket {} ok", env!("CARGO_PKG_VERSION")) }));
 
     // Le watcher (registre, FSEvents, régénération initiale des boards) peut être
     // lent à l'ouverture de session : il s'initialise dans son thread, port déjà ouvert.
-    let watcher_stop = spawn_watcher(started)?;
+    let watcher_stop = spawn_watcher(started, events)?;
 
     let shutdown = {
         let ct = ct.clone();
@@ -233,8 +242,9 @@ fn load_watched() -> Watched {
 }
 
 /// Lance le thread de surveillance. Événementiel (FSEvents sur macOS) : aucun
-/// polling, aucun CPU consommé quand rien ne change.
-fn spawn_watcher(started: Instant) -> Result<mpsc::Sender<()>> {
+/// polling, aucun CPU consommé quand rien ne change. `events` : un message par
+/// lot où un projet ou le registre a changé (flux SSE du panneau).
+fn spawn_watcher(started: Instant, events: broadcast::Sender<()>) -> Result<mpsc::Sender<()>> {
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
     let (ev_tx, ev_rx) = mpsc::channel::<notify::Result<notify::Event>>();
     let registry_path = Registry::path()?;
@@ -337,6 +347,7 @@ fn spawn_watcher(started: Instant) -> Result<mpsc::Sender<()>> {
             }
             if overview_dirty {
                 regenerate_overview();
+                let _ = events.send(());
             }
         }
     })?;

@@ -107,6 +107,17 @@ pub struct TicketContext {
     pub git_error: Option<String>,
 }
 
+/// Contenu d'un ticket pour le panneau web : corps de `ticket.md` sans le
+/// frontmatter, décisions et journal sans les commentaires HTML des gabarits.
+#[derive(Debug, Clone, Serialize)]
+pub struct TicketDetail {
+    pub ticket: String,
+    pub decisions: String,
+    pub journal: String,
+    /// Chemin absolu de `ticket.md`.
+    pub ticket_file: String,
+}
+
 fn today() -> NaiveDate {
     Local::now().date_naive()
 }
@@ -354,6 +365,19 @@ impl Project {
             journal_entries: journal.lines().filter(|l| l.starts_with("## ")).count(),
             decisions: count_decisions(&decisions),
             summary,
+        })
+    }
+
+    /// Lecture seule, sans verrou (comme `scan`). Un journal ou des décisions
+    /// absents donnent une chaîne vide.
+    pub fn detail(&self, id: TicketId) -> Result<TicketDetail> {
+        let t = self.find(id)?;
+        let read = |name: &str| strip_html_comments(&fs::read_to_string(t.path.join(name)).unwrap_or_default());
+        Ok(TicketDetail {
+            ticket: t.doc.body.trim_start_matches('\n').to_string(),
+            decisions: read(DECISIONS_FILE),
+            journal: read(JOURNAL_FILE),
+            ticket_file: t.path.join(TICKET_FILE).display().to_string(),
         })
     }
 
@@ -870,6 +894,28 @@ pub fn last_next_step(journal: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// Retire les commentaires HTML (`<!-- … -->`, y compris sur plusieurs lignes) et les
+/// lignes vides qu'ils laissent en tête. Un commentaire non fermé est retiré jusqu'à la fin.
+pub fn strip_html_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("<!--") {
+        out.push_str(&rest[..start]);
+        match rest[start..].find("-->") {
+            Some(end) => {
+                rest = &rest[start + end + 3..];
+                // Commentaire seul sur sa ligne : la ligne disparaît avec lui.
+                if out.is_empty() || out.ends_with('\n') {
+                    rest = rest.strip_prefix("\r\n").or_else(|| rest.strip_prefix('\n')).unwrap_or(rest);
+                }
+            }
+            None => rest = "",
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 fn count_decisions(text: &str) -> usize {
     text.lines()
         .filter(|l| {
@@ -1090,5 +1136,28 @@ mod tests {
         assert_eq!(ids(&["0-notes/doc/architecture.md", "0-notes/0-global/BOARD.md"]), vec![8]);
         assert_eq!(ids(&["src/main.rs"]), vec![8]);
         assert_eq!(ids(&[]), vec![8]);
+    }
+
+    #[test]
+    fn detail_sans_frontmatter_ni_commentaires() {
+        let (_tmp, p) = project();
+        new(&p, "Un", &[]).unwrap();
+        p.log(TicketId(1), "Avancé", "Finir").unwrap();
+        let d = p.detail(TicketId(1)).unwrap();
+        assert!(d.ticket.starts_with("## Description"), "{}", d.ticket);
+        assert!(!d.ticket.contains("status:"), "{}", d.ticket);
+        assert!(d.journal.starts_with("# Journal") && d.journal.contains("Avancé") && !d.journal.contains("<!--"), "{}", d.journal);
+        assert!(d.decisions.starts_with("# Décisions") && !d.decisions.contains("<!--") && !d.decisions.contains("ticket_decide"), "{}", d.decisions);
+        assert!(d.ticket_file.ends_with("ticket.md"));
+        let err = p.detail(TicketId(9)).unwrap_err().to_string();
+        assert!(err.contains("introuvable"), "{err}");
+    }
+
+    #[test]
+    fn commentaires_html_retires() {
+        assert_eq!(strip_html_comments("a\n<!-- x\ny -->\nb <!-- z --> c\n"), "a\nb  c\n");
+        assert_eq!(strip_html_comments("<!-- x -->\r\nb"), "b");
+        assert_eq!(strip_html_comments("a <!-- jamais fermé"), "a ");
+        assert_eq!(strip_html_comments("rien"), "rien");
     }
 }
