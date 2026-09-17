@@ -21,7 +21,7 @@ Objectif : le binaire compile et fonctionne sous Windows (x86_64-pc-windows-msvc
 ## Critères d'acceptation
 
 - [x] `cargo build` et `cargo test` passent sur windows-latest en CI
-- [ ] `daemon install` sous Windows enregistre un démarrage automatique à l'ouverture de session sans droits administrateur ; `daemon uninstall` le retire ; `daemon status` répond
+- [x] `daemon install` sous Windows enregistre un démarrage automatique à l'ouverture de session sans droits administrateur ; `daemon uninstall` le retire ; `daemon status` répond
 - [x] Hooks git fonctionnels avec Git for Windows (test e2e sur la CI Windows)
 - [x] Binaire Windows publié par la release et procédure d'installation documentée
 - [x] Aucune régression macOS (CI macOS verte)
@@ -37,19 +37,8 @@ Preuves (PR brouillon #1, branche feat/0025-demon-sous-windows) :
   `coutcouticket-0.1.0-x86_64-pc-windows-msvc.zip` et `.sha256`, rassemblés et vérifiés dans
   `SHA256SUMS` ; la publication (même étape, `*.zip` ajouté) n'a lieu qu'au prochain tag.
 
-Critère 2 non coché : sur la CI, la tâche est créée (déclencheur LogonTrigger restreint à
-l'utilisateur, jeton interactif, pas d'élévation), lancée via `conhost --headless`, `status`
-répond, `uninstall` la retire. Restent invérifiables en CI : le compte du runner est
-administrateur, et l'ouverture de session réelle n'est pas rejouable.
-
-Vérification restante (utilisateur, poste Windows 10/11 avec un compte **standard**) :
-1. `irm https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.ps1 | iex`
-   (après la prochaine release), ou extraire le zip de l'essai de release dans un dossier du PATH.
-2. `coutcouticket daemon install` : doit réussir sans invite UAC ; `coutcouticket daemon status` → `ok`.
-3. Fermer la session puis la rouvrir : **aucune fenêtre console** ne doit apparaître, et
-   `coutcouticket daemon status` doit répondre `ok` dans les secondes qui suivent
-   (journal : `%LOCALAPPDATA%\coutcouticket\daemon.log`, lignes « lancement » et « à l'écoute »).
-4. Dans un dépôt : `coutcouticket init`, un commit depuis Git Bash et depuis un client graphique
-   (trailer `Ticket:` ajouté).
-5. `coutcouticket daemon uninstall` : la tâche `coutcouticket-daemon` disparaît du Planificateur.
-
+Critère 2 : validé par l'utilisateur sur un poste Windows le 2026-09-17 (voir le journal).
+La procédure suivie est celle-ci (poste Windows 10/11, compte standard) :
+`daemon install` sans invite UAC, `daemon status` → `ok`, aucune fenêtre console après
+déconnexion puis reconnexion, trailer `Ticket:` ajouté aux commits (Git Bash et client
+graphique), `daemon uninstall` qui retire la tâche `coutcouticket-daemon`.

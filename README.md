@@ -40,7 +40,7 @@ Binaire publié (sans toolchain Rust) :
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.sh | sh
 coutcouticket daemon install        # LaunchAgent : démarre au login, relancé s'il tombe
-coutcouticket daemon status         # → « coutcouticket 0.1.0 ok »
+coutcouticket daemon status         # → « coutcouticket 0.2.0 ok »
 coutcouticket setup-claude --apply  # enregistre le MCP du démon dans Claude Code (portée utilisateur)
 ```
 
@@ -58,7 +58,7 @@ avec le `sh` qu'il fournit). Aucun droit administrateur n'est nécessaire. Dans 
 ```powershell
 irm https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.ps1 | iex
 coutcouticket daemon install        # tâche planifiée : démarre à l'ouverture de session, sans fenêtre
-coutcouticket daemon status         # → « coutcouticket 0.1.0 ok »
+coutcouticket daemon status         # → « coutcouticket 0.2.0 ok »
 coutcouticket setup-claude --apply  # enregistre le MCP du démon dans Claude Code (portée utilisateur)
 ```
 

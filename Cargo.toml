@@ -1,6 +1,6 @@
 [package]
 name = "coutcouticket"
-version = "0.1.0"
+version = "0.2.0"
 description = "Système de tickets et de notes pour Claude Code, piloté par fichiers Markdown"
 rust-version = "1.89"
 edition = "2024"

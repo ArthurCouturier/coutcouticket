@@ -16,3 +16,9 @@ Portage Windows terminé et prouvé en CI (PR brouillon #1). Code : config dans 
 ## 2026-09-17 16:56 — statut : in-progress → review
 
 Portage Windows prouvé en CI (PR brouillon #1) : build/tests macOS + Windows, hooks Git for Windows, tâche planifiée créée/lancée/retirée, zip de release en essai. À vérifier par l'utilisateur sur un poste Windows avec compte standard : daemon install sans UAC, démarrage à l'ouverture de session sans fenêtre console, puis cocher le critère 2 (procédure dans les Notes de ticket.md).
+
+## 2026-09-17 17:12 — avancement
+
+Le 2026-09-17, l'utilisateur indique que la vérification sur un poste Windows est validée (procédure des Notes : `daemon install` sans UAC, démarrage à l'ouverture de session sans fenêtre, hooks, `uninstall`). Critère 2 coché. Le binaire Windows sera publié par la release v0.2.0.
+
+**Prochaine étape :** Aucune

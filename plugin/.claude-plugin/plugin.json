@@ -1,6 +1,6 @@
 {
   "name": "coutcouticket",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Skill « ticket », subagent relecteur de clôture et hook de démarrage de session pour le système de tickets coutcouticket.",
   "author": { "name": "Arthur" }
 }
