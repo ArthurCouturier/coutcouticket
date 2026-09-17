@@ -12,9 +12,9 @@ conçu pour travailler avec Claude Code sans friction.
 
 ```
 coutcouticket (binaire unique, ~5 Mo)
-├── CLI           init, new, start, status, depend, log, decide, list, overview, show, files, board, validate
+├── CLI           init, new, start, status, depend, log, decide, list, overview, ui, show, files, board, validate
 ├── mcp           serveur MCP stdio (secours)
-├── daemon run    serveur MCP HTTP 127.0.0.1 + surveillance des notes (LaunchAgent / tâche planifiée)
+├── daemon run    serveur MCP HTTP 127.0.0.1 + panneau web + surveillance des notes (LaunchAgent / tâche planifiée)
 └── hook          pre-commit, prepare-commit-msg, session-start
           │
           ▼
@@ -200,6 +200,26 @@ liste (avec la correction) sans faire échouer la vue. Même contenu en MCP :
 Le démon tient aussi à jour `~/.config/coutcouticket/OVERVIEW.md` (régénéré à chaque
 changement de notes ou du registre, réécrit seulement si son contenu change). Démon
 arrêté, le fichier peut être en retard : `overview` reste la vue en direct.
+
+### Panneau web
+
+```sh
+coutcouticket ui            # ouvre le panneau dans le navigateur par défaut
+coutcouticket ui --print    # affiche l'adresse de connexion sans ouvrir le navigateur
+```
+
+Kanban en lecture seule des tickets ouverts de tous les projets : colonnes en cours, en
+revue, bloqué, à faire ; filtres par projet, statut et priorité ; dépendances ouvertes.
+Un clic sur un ticket affiche sa description, ses critères, ses décisions, son journal et
+le chemin de son `ticket.md`. La page se met à jour seule quand une note change (le
+démon pousse les changements, sans sondage). Elle est servie par le démon
+(`http://127.0.0.1:47813/ui/`), embarquée dans le binaire, sans CDN ni dépendance
+externe ; sans onglet ouvert, elle ne coûte rien.
+
+Accès : `ui` obtient du démon un lien de connexion à usage unique (valable 2 minutes)
+qui pose un cookie de session. Après un redémarrage du démon, la page indique
+« session expirée » : relancer `coutcouticket ui`. Démon injoignable ou d'une version
+antérieure : `coutcouticket daemon install`, puis `coutcouticket daemon status`.
 
 ## Outils MCP
 

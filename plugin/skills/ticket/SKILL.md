@@ -28,6 +28,7 @@ agir. Ne refais jamais à la main ce qu'un outil fait.
 |---|---|
 | savoir où on en est, quoi faire ensuite | lire `0-notes/0-global/BOARD.md` |
 | quoi faire, tous projets confondus | `tickets_overview` (sans `project` ; reprendre ensuite avec le `project_path` du ticket choisi) |
+| voir les tickets dans un navigateur | lancer `coutcouticket ui` (panneau web en lecture seule, tous projets ; démon requis) |
 | créer un ticket | procédure **Créer** |
 | travailler sur un ticket | procédure **Démarrer / reprendre** |
 | noter une avancée ou s'arrêter | procédure **Journaliser** |

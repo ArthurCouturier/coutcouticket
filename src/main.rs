@@ -12,6 +12,7 @@ mod naming;
 mod overview;
 mod store;
 mod templates;
+mod ui;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -164,6 +165,12 @@ enum Cmd {
         /// Enregistre (ou met à jour) le serveur au lieu d'afficher la commande. Sans danger si déjà fait.
         #[arg(long)]
         apply: bool,
+    },
+    /// Ouvre le panneau web des tickets (tous projets) dans le navigateur ; le démon doit tourner.
+    Ui {
+        /// Affiche l'adresse de connexion (usage unique, 2 min) sans ouvrir le navigateur.
+        #[arg(long)]
+        print: bool,
     },
     /// Points d'entrée des hooks (appelés par git et Claude Code).
     #[command(hide = true)]
@@ -445,6 +452,18 @@ fn run(cli: Cli) -> Result<()> {
                 println!("Si « coutcouticket » est déjà enregistré avec une autre valeur, le retirer d'abord : claude mcp remove coutcouticket");
                 println!("Ou relancer avec --apply : vérifie l'existant et ne le remplace que s'il diffère. Port : {}.", cfg.port);
                 println!("Secours sans démon : claude mcp add --scope user coutcouticket-stdio -- coutcouticket mcp");
+            }
+        }
+        Cmd::Ui { print } => {
+            let url = ui::login_url()?;
+            if print {
+                println!("{url}");
+                eprintln!("Adresse de connexion au panneau : usage unique, valable 2 minutes.");
+            } else if let Err(e) = ui::open_browser(&url) {
+                bail!("{e:#}\nOuvrir cette adresse dans un navigateur (usage unique, valable 2 minutes) :\n{url}");
+            } else {
+                let base = url.split("login?").next().unwrap_or(&url);
+                println!("Panneau ouvert dans le navigateur : {base}\nSession perdue (démon redémarré) : relancer « coutcouticket ui ».");
             }
         }
         Cmd::Hook { which } => match which {

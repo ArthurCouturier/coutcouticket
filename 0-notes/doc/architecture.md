@@ -23,7 +23,8 @@ appellent le cœur, rien de plus.
 | `naming.rs` | slug, nom de dossier, nom et classification de branche |
 | `config.rs` | `.coutcouticket.toml`, registre des projets, configuration du démon, dossier de config globale |
 | `board.rs` | rendu déterministe de `BOARD.md` |
-| `overview.rs` | vue des tickets ouverts de tous les projets du registre (`overview`, `tickets_overview`, `OVERVIEW.md`) |
+| `overview.rs` | vue des tickets ouverts de tous les projets du registre (`overview`, `tickets_overview`, `OVERVIEW.md`), détail d'un ticket limité au registre |
+| `ui.rs` + `src/ui/` | panneau web du démon (`/ui`) : page, API, SSE, connexion ; commande `ui` |
 | `init.rs` | création et réparation idempotentes de l'arborescence, bloc CLAUDE.md, hooks git |
 | `git.rs` | appels au binaire git |
 | `claude.rs` | `setup-claude` : lecture de `claude mcp get`, ajout ou remplacement idempotent |
@@ -104,11 +105,62 @@ appellent le cœur, rien de plus.
   horodatage), liens absolus entre chevrons vers les `ticket.md`. Ses écritures dans le
   dossier global ne relancent rien (seul `projects.toml` y est suivi).
 
+## Panneau web (`ui.rs`, `src/ui/`)
+
+Lecture seule, servi par le démon ; décisions D1 et D2 du ticket 0026.
+
+- Page : `src/ui/index.html`, `app.js`, `app.css` (`include_str!`), sans framework ni CDN.
+  JS et CSS sont des fichiers séparés parce que la CSP interdit tout script ou style en
+  ligne (test `page_sans_script_en_ligne`). Le Markdown est rendu par un mini-rendu du
+  JS, qui échappe tout le texte d'abord. Une maquette peut définir `window.MOCK`
+  avant `app.js`.
+- Routes (toutes derrière `guard`) : `/ui` (redirige vers `/ui/`), `/ui/`, `app.js`, `app.css`,
+  `login`, `api/overview` (= `overview --json`), `api/ticket?project=&id=`
+  (`overview::detail` → `Project::detail` : corps de ticket.md sans frontmatter,
+  decisions et journal sans commentaires HTML, `ticket_file`), `api/events` (SSE).
+  Pas de feature `json`/`query` d'axum : JSON par `serde_json`, requête décodée par
+  `percent-encoding`.
+- `overview::detail` : `project` doit égaler, caractère pour caractère, une racine du
+  registre (`display()`), sinon `None` → 404, sans accès disque. La racine doit contenir
+  `.coutcouticket.toml`, et `Project::open` doit rendre cette même racine : `find_root`
+  remonte l'arborescence et ouvrirait sinon un projet parent.
+- Connexion : `coutcouticket ui` → `POST /ui-login-code` avec le Bearer (route fusionnée
+  **avant** `.layer(auth)` dans `daemon::serve`, refusée si un `Origin` est présent) → code
+  aléatoire à usage unique (2 min, 16 au plus) → `/ui/login?code=` pose le cookie `cct_ui`
+  (`HttpOnly; SameSite=Strict; Path=/ui`, secret tiré au lancement du démon) et renvoie
+  une page `meta refresh` vers `./`. Piège : avec un 302, l'envoi du cookie Strict dépend
+  du navigateur ; la page intermédiaire rend la navigation suivante same-origin.
+- `guard` : Host = 127.0.0.1|localhost[:port du démon] ; Origin, si présent, = même
+  origine ; `Sec-Fetch-Site`, si présent, ∈ {`same-origin`, `none`}. Piège : SameSite
+  ignore le port, donc un autre serveur local en `same-site` recevrait le cookie ; il
+  est refusé ici. Sans cookie : 401, en HTML ou en JSON pour `api/`. Publics : `login`,
+  `app.js`, `app.css`. En-têtes sur toutes les réponses : CSP stricte (`default-src 'none'`,
+  `frame-ancestors 'none'`), `nosniff`, `no-referrer`, `X-Frame-Options: DENY`,
+  `no-store`, COOP et CORP.
+- SSE : `broadcast::channel` créé dans `serve`. Le watcher envoie `()` après chaque lot
+  où `OVERVIEW.md` est régénéré ; sans abonné, l'envoi échoue sans coût. Le flux est un
+  `unfold` sur le récepteur, sans tâche lancée : il meurt avec la connexion. Il envoie
+  un commentaire de maintien toutes les 30 s. Un retard (`Lagged`) compte comme un
+  changement. Piège : `with_graceful_shutdown` attend les connexions ouvertes ; le flux
+  s'arrête donc sur le `CancellationToken` du démon.
+- Page : `refresh` à l'ouverture, à chaque événement et à la reconnexion. Le détail
+  ouvert est relu, sur le même onglet. Un 401 (démon redémarré) ferme l'EventSource et
+  affiche « session expirée : relancer coutcouticket ui ». Les liens `file://` sont
+  bloqués depuis une page http : le chemin de ticket.md s'affiche avec un bouton « Copier ».
+- CLI `ui` (`login_url`, `open_browser`) : HTTP brut (comme `health`), messages dédiés
+  pour démon non configuré, injoignable (404 = démon d'une version antérieure) ou jeton
+  refusé. Navigateur : `open` (macOS), `cmd /C start "" <url>` (Windows ; l'URL ne
+  contient aucun caractère spécial de cmd), sinon `xdg-open`. `--print` affiche l'URL.
+- Mesures (release, macOS, 20 tickets) : binaire de 3 804 768 à 3 904 592 octets
+  (+98 Ko). RSS au repos d'environ 10 Mo, inchangée. CPU au repos nul, y compris après
+  la fermeture des flux SSE (connexions libérées).
+
 ## Démon
 
 - Streamable HTTP via rmcp, monté sur `/mcp` ; `/health` sans authentification.
-- Sécurité : écoute sur 127.0.0.1, `allowed_hosts` restreint, jeton Bearer comparé
-  en temps constant, toute requête portant un en-tête `Origin` refusée (403).
+- Sécurité de `/mcp` : écoute sur 127.0.0.1, `allowed_hosts` restreint, jeton Bearer
+  comparé en temps constant, toute requête portant un en-tête `Origin` refusée (403).
+  Le panneau `/ui` a sa propre garde (voir « Panneau web »).
 - En mode démon, le paramètre `project` est obligatoire et doit être enregistré
   (sauf `tickets_overview`, qui n'en a pas).
 - Configuration globale (`config::global_dir`) : `COUTCOUTICKET_HOME`, sinon
@@ -140,6 +192,9 @@ appellent le cœur, rien de plus.
   la cause retenue. Ne pas le réintroduire : le démon est événementiel et ne consomme
   rien au repos, le bridage ne fait que retarder le démarrage. Le plist installé n'est
   réécrit que par `daemon install` (à relancer après toute modification du gabarit).
+  `daemon install` fait `bootout` puis `bootstrap`, puis attend que `/health` réponde
+  (10 s au plus, `wait_health`, commune avec Windows) : launchctl rend la main avant que
+  le nouveau démon écoute, et une commande enchaînée (`daemon install && ui`) échouait.
 - Windows (module `daemon::windows`, XML dans `windows_task_xml`) : tâche planifiée
   `coutcouticket-daemon` (surchargeable par `COUTCOUTICKET_DAEMON_TASK`) à la racine du
   planificateur, créée par `schtasks /Create /XML` (fichier UTF-16 avec BOM,
@@ -274,7 +329,9 @@ convention de dossier, sans déclaration dans le manifeste :
   `tickets_overview` en stdio), le MCP stdio, et le démon HTTP (authentification, Origin,
   watcher sous lecture continue, `tickets_overview` sans `project`, `OVERVIEW.md` suivant
   les notes et le registre, écoute avant le watcher et journal horodaté), les hooks avec le PATH de
-  launchd, le .gitignore des notes, et `setup-claude --apply` avec un faux `claude`
+  launchd, le panneau web (`panneau_web` : `ui --print` sans démon, 401, code à usage
+  unique, cookie, en-têtes, API, projet hors registre, Origin/Sec-Fetch-Site/Host
+  étrangers, SSE après une édition de note), le .gitignore des notes, et `setup-claude --apply` avec un faux `claude`
   (script shell : absent, identique, différent, autre portée, échec), et git en échec
   avec un faux git (`COUTCOUTICKET_GIT_BIN` : licence Xcode en code 69, panne en 128,
   binaire introuvable) comparé à un vrai dossier hors dépôt.

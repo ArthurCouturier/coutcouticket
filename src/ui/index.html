@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>coutcouticket</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header>
+  <h1>coutcouticket <span id="summary"></span></h1>
+  <div class="live"><span class="dot" id="dot"></span><span id="live">à jour</span></div>
+  <div class="filters" id="filters"></div>
+</header>
+<div class="warnings" id="warnings" hidden></div>
+<main id="board"></main>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <header><h2 id="d-title"></h2><button class="close" id="d-close" aria-label="Fermer">×</button></header>
+  <div class="facts" id="d-facts"></div>
+  <div class="tabs" role="tablist" id="d-tabs"></div>
+  <div class="doc" id="d-doc"></div>
+</aside>
+</body>
+</html>

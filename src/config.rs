@@ -258,7 +258,7 @@ impl DaemonConfig {
 }
 
 /// Jeton aléatoire du système (`getrandom` : /dev/urandom, ProcessPrng sous Windows).
-fn random_token() -> Result<String> {
+pub fn random_token() -> Result<String> {
     let mut buf = [0u8; 24];
     getrandom::fill(&mut buf).map_err(|e| anyhow!("générateur aléatoire du système indisponible : {e}"))?;
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())

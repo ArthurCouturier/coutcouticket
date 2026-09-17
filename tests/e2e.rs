@@ -705,6 +705,193 @@ fn daemon_ecoute_avant_le_watcher() {
     assert!(TcpStream::connect(("127.0.0.1", port)).is_ok());
 }
 
+/// Requête HTTP brute (en-tête Host libre). Rend (statut, en-têtes en minuscules, corps).
+fn raw_http(port: u16, request: &str) -> (u16, String, String) {
+    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    s.write_all(request.as_bytes()).unwrap();
+    let mut resp = String::new();
+    let _ = s.read_to_string(&mut resp);
+    let status: u16 = resp.split_whitespace().nth(1).unwrap_or("0").parse().unwrap_or(0);
+    let (head, body) = resp.split_once("\r\n\r\n").unwrap_or((&resp, ""));
+    (status, head.to_ascii_lowercase(), body.to_string())
+}
+
+fn get(port: u16, path: &str, headers: &[(&str, &str)]) -> (u16, String, String) {
+    let mut req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n");
+    for (k, v) in headers {
+        req.push_str(&format!("{k}: {v}\r\n"));
+    }
+    raw_http(port, &(req + "\r\n"))
+}
+
+fn encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+        .collect()
+}
+
+/// Panneau web (ticket 0026) : connexion par code à usage unique, cookie de session,
+/// en-têtes de sécurité, API limitée aux projets enregistrés, Host et Origin, SSE.
+#[test]
+fn panneau_web() {
+    let env = Env::new();
+    // Sans configuration du démon, puis démon arrêté : message explicite.
+    let out = env.cct(&["ui", "--print"]);
+    assert!(!out.status.success() && stderr(&out).contains("daemon install"), "{}", stderr(&out));
+    env.ok(&["init"]);
+    env.ok(&["new", "-t", "Premier ticket", "-a", "Critère visible"]);
+    env.ok(&["log", "1", "-t", "Entrée de journal", "-n", "Suite"]);
+    let port = free_port();
+    fs::write(env.home.join("daemon.toml"), format!("port = {port}\ntoken = \"jeton-ui\"\n")).unwrap();
+    let out = env.cct(&["ui", "--print"]);
+    assert!(!out.status.success(), "démon arrêté : doit échouer");
+    let err = stderr(&out);
+    assert!(err.contains(&format!("injoignable sur le port {port}")) && err.contains("daemon install") && err.contains("daemon status"), "{err}");
+
+    let _daemon = Kill(env.cmd(BIN).args(["daemon", "run"]).stderr(Stdio::null()).spawn().unwrap());
+    let start = Instant::now();
+    while !env.home.join("OVERVIEW.md").exists() {
+        assert!(start.elapsed() < Duration::from_secs(10), "le démon ne démarre pas");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // Sans session : 401, page explicative, en-têtes de sécurité.
+    let (st, head, body) = get(port, "/ui/", &[]);
+    assert_eq!(st, 401, "{head}");
+    assert!(body.contains("coutcouticket ui"), "{body}");
+    for needle in [
+        "content-security-policy: default-src 'none'; script-src 'self'; style-src 'self'",
+        "frame-ancestors 'none'",
+        "x-content-type-options: nosniff",
+        "referrer-policy: no-referrer",
+        "x-frame-options: deny",
+        "cache-control: no-store",
+    ] {
+        assert!(head.contains(needle), "{needle} absent :\n{head}");
+    }
+    let (st, _, body) = get(port, "/ui/api/overview", &[]);
+    assert!(st == 401 && body.contains("\"error\"") && !body.contains("Premier"), "{st} {body}");
+    let (st, _, _) = get(port, "/ui/api/events", &[]);
+    assert_eq!(st, 401);
+
+    // Code de connexion : Bearer obligatoire, jamais depuis un navigateur.
+    let post = |extra: &str| {
+        raw_http(port, &format!("POST /ui-login-code HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n{extra}\r\n"))
+    };
+    assert_eq!(post("").0, 401);
+    assert_eq!(post("Authorization: Bearer faux\r\n").0, 401);
+    assert_eq!(post(&format!("Authorization: Bearer jeton-ui\r\nOrigin: http://127.0.0.1:{port}\r\n")).0, 403);
+
+    let url = env.ok(&["ui", "--print"]).trim().to_string();
+    let prefix = format!("http://127.0.0.1:{port}/ui/login?code=");
+    assert!(url.starts_with(&prefix), "{url}");
+    let login = &url[format!("http://127.0.0.1:{port}").len()..];
+    let (st, _, _) = get(port, "/ui/login?code=0123abcd", &[]);
+    assert_eq!(st, 401, "code inventé accepté");
+    let (st, head, body) = get(port, login, &[]);
+    assert_eq!(st, 200, "{head}\n{body}");
+    let cookie_line = head.lines().find(|l| l.starts_with("set-cookie:")).expect(&head).to_string();
+    for needle in ["cct_ui=", "path=/ui", "httponly", "samesite=strict"] {
+        assert!(cookie_line.contains(needle), "{needle} absent : {cookie_line}");
+    }
+    assert!(body.contains("http-equiv=\"refresh\" content=\"0; url=./\""), "{body}");
+    let (st, _, _) = get(port, login, &[]);
+    assert_eq!(st, 401, "code réutilisable");
+    // Cookie tel que le navigateur le renverra (valeur hexadécimale : la mise en minuscules ne l'altère pas).
+    let cookie = cookie_line.trim_start_matches("set-cookie:").trim().split(';').next().unwrap().to_string();
+    let c = ("Cookie", cookie.as_str());
+    let (st, _, _) = get(port, "/ui/", &[("Cookie", "cct_ui=faux")]);
+    assert_eq!(st, 401, "faux cookie accepté");
+
+    // Page, ressources et API avec la session.
+    let (st, head, body) = get(port, "/ui/", &[c, ("Sec-Fetch-Site", "none")]);
+    assert_eq!(st, 200, "{head}");
+    assert!(head.contains("content-type: text/html") && head.contains("content-security-policy") && body.contains("app.js"), "{head}");
+    let (st, head, _) = get(port, "/ui/app.js", &[]);
+    assert!(st == 200 && head.contains("content-type: text/javascript") && head.contains("nosniff"), "{head}");
+    let (st, head, _) = get(port, "/ui", &[c]);
+    assert!(st == 308 && head.contains("location: /ui/"), "{head}");
+    let origin = format!("http://127.0.0.1:{port}");
+    let (st, head, body) = get(port, "/ui/api/overview", &[c, ("Origin", &origin), ("Sec-Fetch-Site", "same-origin")]);
+    assert_eq!(st, 200, "{head}\n{body}");
+    assert!(head.contains("application/json") && head.contains("cache-control: no-store"), "{head}");
+    let overview: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(overview["tickets"][0]["title"], "Premier ticket", "{body}");
+    let project_path = overview["tickets"][0]["project_path"].as_str().unwrap().to_string();
+    assert_eq!(project_path, canon(&env.repo).display().to_string());
+
+    let ticket = |project: &str, id: &str| get(port, &format!("/ui/api/ticket?project={}&id={id}", encode(project)), &[c]);
+    let (st, _, body) = ticket(&project_path, "1");
+    assert_eq!(st, 200, "{body}");
+    let detail: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let text = detail["ticket"].as_str().unwrap();
+    assert!(text.starts_with("## Description") && text.contains("Critère visible") && !text.contains("status:"), "{text}");
+    let journal = detail["journal"].as_str().unwrap();
+    assert!(journal.contains("Entrée de journal") && !journal.contains("<!--"), "{journal}");
+    assert!(detail["decisions"].as_str().unwrap().starts_with("# Décisions"), "{body}");
+    assert!(detail["ticket_file"].as_str().unwrap().ends_with("ticket.md"), "{body}");
+
+    // Refus : id invalide, ticket absent, projet non enregistré, chemin détourné.
+    assert_eq!(ticket(&project_path, "abc").0, 400);
+    assert_eq!(ticket(&project_path, "..%2F..").0, 400);
+    assert_eq!(ticket(&project_path, "42").0, 404);
+    let other = env.repo.parent().unwrap().join("hors-registre");
+    fs::create_dir_all(&other).unwrap();
+    env.ok(&["init", "--no-register", "--no-git-hooks", other.to_str().unwrap()]);
+    env.ok(&["-C", other.to_str().unwrap(), "new", "-t", "Secret"]);
+    let (st, _, body) = ticket(&canon(&other).display().to_string(), "1");
+    assert!(st == 404 && body.contains("non enregistré") && !body.contains("Secret"), "{st} {body}");
+    let detour = format!("{project_path}{0}..{0}hors-registre", std::path::MAIN_SEPARATOR);
+    assert_eq!(ticket(&detour, "1").0, 404);
+    assert_eq!(get(port, "/ui/api/ticket?id=1", &[c]).0, 400);
+
+    // Origine, site et hôte étrangers : refusés même avec la session.
+    for bad in [("Origin", "http://evil.example"), ("Origin", "null"), ("Origin", "http://127.0.0.1:1"), ("Sec-Fetch-Site", "cross-site"), ("Sec-Fetch-Site", "same-site")] {
+        let (st, _, body) = get(port, "/ui/api/overview", &[c, bad]);
+        assert!(st == 403 && !body.contains("Premier"), "{bad:?} : {st} {body}");
+    }
+    for host in ["evil.example", &format!("evil.example:{port}"), "127.0.0.1:1"] {
+        let (st, _, body) = raw_http(port, &format!("GET /ui/api/overview HTTP/1.1\r\nHost: {host}\r\nCookie: {cookie}\r\nConnection: close\r\n\r\n"));
+        assert!(st == 403 && !body.contains("Premier"), "Host {host} : {st} {body}");
+    }
+    let (st, _, _) = raw_http(port, &format!("GET /ui/api/overview HTTP/1.1\r\nHost: localhost:{port}\r\nCookie: {cookie}\r\nConnection: close\r\n\r\n"));
+    assert_eq!(st, 200, "localhost refusé");
+    // /mcp garde son comportement : Origin toujours refusé.
+    let (st, _, _) = http(port, "POST", "/mcp", &[("Authorization", "Bearer jeton-ui"), ("Origin", &origin), ("Content-Type", "application/json"), ("Accept", "application/json, text/event-stream")], "{}");
+    assert_eq!(st, 403);
+
+    // SSE : un événement après modification d'une note.
+    let mut sse = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    write!(sse, "GET /ui/api/events HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nCookie: {cookie}\r\nAccept: text/event-stream\r\n\r\n").unwrap();
+    sse.set_read_timeout(Some(Duration::from_millis(500))).unwrap();
+    let mut received = Vec::new();
+    let mut buf = [0u8; 4096];
+    let start = Instant::now();
+    let mut edited = false;
+    loop {
+        match sse.read(&mut buf) {
+            Ok(0) => panic!("flux SSE fermé : {}", String::from_utf8_lossy(&received)),
+            Ok(n) => received.extend_from_slice(&buf[..n]),
+            Err(_) => {}
+        }
+        let text = String::from_utf8_lossy(&received).to_string();
+        if !edited && text.contains("\r\n\r\n") {
+            let head = text.to_ascii_lowercase();
+            assert!(head.starts_with("http/1.1 200") && head.contains("content-type: text/event-stream"), "{text}");
+            assert!(!text.contains("data: changed"), "événement avant toute modification : {text}");
+            let journal = env.notes().join("tickets/0001-premier-ticket/journal.md");
+            let content = fs::read_to_string(&journal).unwrap();
+            fs::write(&journal, content + "\nÉdition manuelle.\n").unwrap();
+            edited = true;
+        }
+        if text.contains("data: changed") {
+            break;
+        }
+        assert!(start.elapsed() < Duration::from_secs(15), "aucun événement SSE :\n{text}");
+    }
+}
+
 /// `daemon run --log-file` (service Windows) : journal dans le fichier, pid à côté.
 #[test]
 fn daemon_journal_dans_un_fichier() {
