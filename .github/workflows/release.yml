@@ -3,6 +3,7 @@
 #   git tag v0.2.0 && git push origin v0.2.0
 # Essai sans tag (build + artefacts, aucune publication) :
 #   gh workflow run release.yml --ref <branche> -f essai=true
+# Archives : .tar.gz macOS (aarch64, x86_64) et .zip Windows (x86_64).
 # Voir 0-notes/doc/distribution.md.
 name: release
 
@@ -105,8 +106,75 @@ jobs:
             dist/*.sha256
           if-no-files-found: error
 
+  build-windows:
+    name: build (x86_64-pc-windows-msvc)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain Rust
+        run: |
+          rustup toolchain install stable --profile minimal --target "$TARGET"
+          rustup default stable
+
+      - name: Version (et contrôle du tag sur un push de tag)
+        id: version
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "${{ inputs.essai }}" != "true" ]; then
+            echo "::error::Un lancement manuel ne publie jamais de release. Corriger : relancer avec « -f essai=true », ou publier en poussant un tag « v<version> »."
+            exit 1
+          fi
+          tag="${GITHUB_REF_NAME}"
+          version="$(cargo pkgid --locked | sed 's/.*[#@]//')"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "::notice::Essai sur « $tag » : version $version lue dans Cargo.toml, contrôle du tag ignoré, aucune publication."
+          elif [ "$tag" != "v$version" ]; then
+            echo "::error::Le tag « $tag » ne correspond pas à la version de Cargo.toml ($version). Corriger : aligner Cargo.toml sur le tag (ou supprimer le tag et créer « v$version »)."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Tests
+        run: cargo test --locked
+        env:
+          # Installe réellement la tâche planifiée du démon (runner jetable).
+          COUTCOUTICKET_TEST_WINDOWS_SERVICE: "1"
+
+      - name: Build release
+        # CRT statique : pas de dépendance au redistribuable Visual C++ (vcruntime140.dll).
+        run: cargo build --release --locked --target "$TARGET"
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+
+      - name: Contrôle
+        run: target/$TARGET/release/coutcouticket.exe --version
+
+      - name: Archive et somme SHA-256
+        run: |
+          name="coutcouticket-${{ steps.version.outputs.version }}-$TARGET"
+          mkdir -p "dist/$name"
+          cp "target/$TARGET/release/coutcouticket.exe" README.md "dist/$name/"
+          cd dist
+          7z a -tzip "$name.zip" "$name" > /dev/null
+          # Même format que « shasum -a 256 » (deux espaces, sans astérisque).
+          printf '%s  %s\n' "$(sha256sum "$name.zip" | cut -d ' ' -f 1)" "$name.zip" > "$name.zip.sha256"
+          cat "$name.zip.sha256"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: x86_64-pc-windows-msvc
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -135,4 +203,4 @@ jobs:
             --title "coutcouticket ${GITHUB_REF_NAME#v}" \
             --generate-notes \
             --verify-tag \
-            *.tar.gz *.sha256 SHA256SUMS
+            *.tar.gz *.zip *.sha256 SHA256SUMS

@@ -18,8 +18,14 @@ env:
 
 jobs:
   test:
-    # macOS : cible réelle du projet (FSEvents, launchd). Gratuit pour un dépôt public.
-    runs-on: macos-15
+    name: test (${{ matrix.os }})
+    # macOS : cible principale (FSEvents, launchd). Windows : tâche planifiée, Git for Windows.
+    # Gratuit pour un dépôt public.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
       - name: Toolchain Rust
@@ -30,7 +36,36 @@ jobs:
       - name: Clippy
         # Tout avertissement fait échouer la CI (ticket 0023).
         run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Build
+        run: cargo build --locked
       - name: Tests
-        run: cargo test --locked
+        run: cargo test --locked --no-fail-fast
+        env:
+          # Windows : installe réellement la tâche planifiée du démon (runner jetable).
+          COUTCOUTICKET_TEST_WINDOWS_SERVICE: ${{ runner.os == 'Windows' && '1' || '' }}
       - name: Script d'installation
+        if: runner.os == 'macOS'
         run: sh -n install.sh
+      - name: Script d'installation (Windows, archive locale)
+        if: runner.os == 'Windows'
+        # Windows PowerShell 5.1 : la version présente sur tous les postes.
+        shell: powershell
+        run: |
+          $name = "coutcouticket-0.0.0-x86_64-pc-windows-msvc"
+          New-Item -ItemType Directory -Force "dist/$name" | Out-Null
+          Copy-Item target/debug/coutcouticket.exe, README.md "dist/$name/"
+          Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 "dist/$name.zip").Hash.ToLower()
+          Set-Content -NoNewline -Path "dist/$name.zip.sha256" -Value "$hash  $name.zip"
+          $env:COUTCOUTICKET_BASE_URL = ([Uri](Resolve-Path dist).Path).AbsoluteUri
+          $dir = Join-Path $env:RUNNER_TEMP 'cct-bin'
+          $cct = Join-Path $dir 'coutcouticket.exe'
+          ./install.ps1 -Version 0.0.0 -Dir $dir
+          # Mise à jour démon en marche : l'exe en cours d'exécution est renommé, la tâche relancée.
+          & $cct daemon install
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./install.ps1 -Version 0.0.0 -Dir $dir
+          & $cct daemon status
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $cct daemon uninstall
+          if ($LASTEXITCODE -ne 0) { exit 1 }

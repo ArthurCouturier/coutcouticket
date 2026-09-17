@@ -2,7 +2,7 @@
 id: "0025"
 title: "Démon sous Windows"
 type: feat
-status: todo
+status: review
 priority: p2
 projects: [daemon, core]
 created: 2026-09-17
@@ -20,11 +20,36 @@ Objectif : le binaire compile et fonctionne sous Windows (x86_64-pc-windows-msvc
 
 ## Critères d'acceptation
 
-- [ ] `cargo build` et `cargo test` passent sur windows-latest en CI
+- [x] `cargo build` et `cargo test` passent sur windows-latest en CI
 - [ ] `daemon install` sous Windows enregistre un démarrage automatique à l'ouverture de session sans droits administrateur ; `daemon uninstall` le retire ; `daemon status` répond
-- [ ] Hooks git fonctionnels avec Git for Windows (test e2e sur la CI Windows)
-- [ ] Binaire Windows publié par la release et procédure d'installation documentée
-- [ ] Aucune régression macOS (CI macOS verte)
+- [x] Hooks git fonctionnels avec Git for Windows (test e2e sur la CI Windows)
+- [x] Binaire Windows publié par la release et procédure d'installation documentée
+- [x] Aucune régression macOS (CI macOS verte)
 
 ## Notes
+
+Preuves (PR brouillon #1, branche feat/0025-demon-sous-windows) :
+- CI run 35235901067 : `test (macos-15)` et `test (windows-latest)` verts (clippy `-D warnings`,
+  build, `cargo test --no-fail-fast`, dont `hooks_git_for_windows` et
+  `daemon_tache_planifiee_windows`), puis `install.ps1` sous PowerShell 5.1 : installation,
+  `daemon install`, mise à jour démon en marche, `daemon status`, `daemon uninstall`.
+- Release en essai (run 35235915058, `-f essai=true`) : `build (x86_64-pc-windows-msvc)` produit
+  `coutcouticket-0.1.0-x86_64-pc-windows-msvc.zip` et `.sha256`, rassemblés et vérifiés dans
+  `SHA256SUMS` ; la publication (même étape, `*.zip` ajouté) n'a lieu qu'au prochain tag.
+
+Critère 2 non coché : sur la CI, la tâche est créée (déclencheur LogonTrigger restreint à
+l'utilisateur, jeton interactif, pas d'élévation), lancée via `conhost --headless`, `status`
+répond, `uninstall` la retire. Restent invérifiables en CI : le compte du runner est
+administrateur, et l'ouverture de session réelle n'est pas rejouable.
+
+Vérification restante (utilisateur, poste Windows 10/11 avec un compte **standard**) :
+1. `irm https://raw.githubusercontent.com/ArthurCouturier/coutcouticket/main/install.ps1 | iex`
+   (après la prochaine release), ou extraire le zip de l'essai de release dans un dossier du PATH.
+2. `coutcouticket daemon install` : doit réussir sans invite UAC ; `coutcouticket daemon status` → `ok`.
+3. Fermer la session puis la rouvrir : **aucune fenêtre console** ne doit apparaître, et
+   `coutcouticket daemon status` doit répondre `ok` dans les secondes qui suivent
+   (journal : `%LOCALAPPDATA%\coutcouticket\daemon.log`, lignes « lancement » et « à l'écoute »).
+4. Dans un dépôt : `coutcouticket init`, un commit depuis Git Bash et depuis un client graphique
+   (trailer `Ticket:` ajouté).
+5. `coutcouticket daemon uninstall` : la tâche `coutcouticket-daemon` disparaît du Planificateur.
 

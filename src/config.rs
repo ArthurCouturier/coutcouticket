@@ -1,5 +1,6 @@
 //! Configuration : `.coutcouticket.toml` (par projet), registre des projets et
-//! configuration du démon (globales, dans `~/.config/coutcouticket/`).
+//! configuration du démon (globales, dans `~/.config/coutcouticket/`, ou
+//! `%APPDATA%\coutcouticket\` sous Windows).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -112,8 +113,7 @@ impl Config {
 
 /// Remonte l'arborescence depuis `start` jusqu'à trouver `.coutcouticket.toml`.
 pub fn find_root(start: &Path) -> Result<PathBuf> {
-    let start = start
-        .canonicalize()
+    let start = crate::fsutil::canonicalize(start)
         .with_context(|| format!("chemin introuvable : {}", start.display()))?;
     let mut cur: Option<&Path> = Some(&start);
     while let Some(dir) = cur {
@@ -132,17 +132,30 @@ pub fn find_root(start: &Path) -> Result<PathBuf> {
 // Configuration globale
 // ---------------------------------------------------------------------------
 
+/// Dossier de la configuration globale : `COUTCOUTICKET_HOME`, sinon
+/// `%APPDATA%\coutcouticket` (Windows), sinon `$XDG_CONFIG_HOME/coutcouticket`,
+/// sinon `~/.config/coutcouticket`.
 pub fn global_dir() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("COUTCOUTICKET_HOME") {
         return Ok(PathBuf::from(dir));
     }
-    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME")
-        && !xdg.is_empty()
+    #[cfg(windows)]
     {
-        return Ok(PathBuf::from(xdg).join("coutcouticket"));
+        let appdata = std::env::var("APPDATA").map_err(|_| {
+            anyhow!("variable APPDATA absente : la définir (profil Windows) ou définir COUTCOUTICKET_HOME avec le dossier de configuration")
+        })?;
+        Ok(PathBuf::from(appdata).join("coutcouticket"))
     }
-    let home = std::env::var("HOME").map_err(|_| anyhow!("variable HOME absente"))?;
-    Ok(PathBuf::from(home).join(".config").join("coutcouticket"))
+    #[cfg(not(windows))]
+    {
+        if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME")
+            && !xdg.is_empty()
+        {
+            return Ok(PathBuf::from(xdg).join("coutcouticket"));
+        }
+        let home = std::env::var("HOME").map_err(|_| anyhow!("variable HOME absente"))?;
+        Ok(PathBuf::from(home).join(".config").join("coutcouticket"))
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -177,7 +190,7 @@ impl Registry {
 
     /// Ajoute un projet ; retourne false s'il était déjà présent.
     pub fn add(&mut self, root: &Path) -> Result<bool> {
-        let root = root.canonicalize()?;
+        let root = crate::fsutil::canonicalize(root)?;
         if self.projects.contains(&root) {
             return Ok(false);
         }
@@ -187,14 +200,14 @@ impl Registry {
     }
 
     pub fn remove(&mut self, root: &Path) -> bool {
-        let canon = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let canon = crate::fsutil::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
         let before = self.projects.len();
         self.projects.retain(|p| p != &canon && p != root);
         before != self.projects.len()
     }
 
     pub fn contains(&self, root: &Path) -> bool {
-        let canon = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let canon = crate::fsutil::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
         self.projects.contains(&canon)
     }
 }
@@ -233,6 +246,8 @@ impl DaemonConfig {
             toml::to_string(&cfg)?
         );
         crate::fsutil::write_atomic(&path, &text)?;
+        // Windows : pas d'équivalent à 0600 ici. Le fichier hérite des ACL de
+        // %APPDATA%, qui ne donnent accès qu'à l'utilisateur, SYSTEM et aux administrateurs.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -242,12 +257,10 @@ impl DaemonConfig {
     }
 }
 
+/// Jeton aléatoire du système (`getrandom` : /dev/urandom, ProcessPrng sous Windows).
 fn random_token() -> Result<String> {
-    use std::io::Read;
     let mut buf = [0u8; 24];
-    fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut buf))
-        .context("lecture de /dev/urandom")?;
+    getrandom::fill(&mut buf).map_err(|e| anyhow!("générateur aléatoire du système indisponible : {e}"))?;
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 

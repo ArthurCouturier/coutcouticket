@@ -113,7 +113,25 @@ pub enum Outcome {
 }
 
 fn claude_bin() -> OsString {
-    std::env::var_os("COUTCOUTICKET_CLAUDE_BIN").unwrap_or_else(|| "claude".into())
+    if let Some(bin) = std::env::var_os("COUTCOUTICKET_CLAUDE_BIN") {
+        return bin;
+    }
+    // Windows : `Command` ne cherche que `claude.exe` ; l'installation npm fournit `claude.cmd`.
+    #[cfg(windows)]
+    {
+        if let Some(found) = std::env::var_os("PATH").and_then(|p| find_in_path("claude", &p, &["exe", "cmd", "bat"])) {
+            return found.into_os_string();
+        }
+    }
+    "claude".into()
+}
+
+/// Premier `<dossier>/<nom>.<ext>` existant, dossiers du PATH puis extensions dans l'ordre.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn find_in_path(name: &str, path: &std::ffi::OsStr, exts: &[&str]) -> Option<std::path::PathBuf> {
+    std::env::split_paths(path)
+        .flat_map(|dir| exts.iter().map(move |ext| dir.join(format!("{name}.{ext}"))))
+        .find(|p| p.is_file())
 }
 
 fn run_claude(args: &[String]) -> Result<Output> {
@@ -216,6 +234,19 @@ pub fn apply() -> Result<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_cmd_trouve_dans_le_path() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        std::fs::write(b.path().join("claude.cmd"), "").unwrap();
+        let path = std::env::join_paths([a.path(), b.path()]).unwrap();
+        assert_eq!(find_in_path("claude", &path, &["exe", "cmd"]), Some(b.path().join("claude.cmd")));
+        std::fs::write(a.path().join("claude.exe"), "").unwrap();
+        assert_eq!(find_in_path("claude", &path, &["exe", "cmd"]), Some(a.path().join("claude.exe")));
+        assert_eq!(find_in_path("absent", &path, &["exe", "cmd"]), None);
+    }
+
 
     const GET_USER: &str = "coutcouticket:
   Scope: User config (available in all your projects)

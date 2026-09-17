@@ -16,8 +16,47 @@ pub fn write_atomic(path: &Path, content: &str) -> Result<()> {
         std::process::id()
     ));
     fs::write(&tmp, content).with_context(|| format!("écriture de {}", tmp.display()))?;
-    fs::rename(&tmp, path).with_context(|| format!("remplacement de {}", path.display()))?;
+    rename(&tmp, path).with_context(|| format!("remplacement de {}", path.display()))?;
     Ok(())
+}
+
+/// Renommage avec remplacement. Sous Windows, un fichier ouvert ailleurs sans partage
+/// en suppression (antivirus, indexation, éditeur) fait échouer le remplacement :
+/// quelques essais rapprochés avant d'abandonner.
+fn rename(from: &Path, to: &Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        for _ in 0..10 {
+            match fs::rename(from, to) {
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                    std::thread::sleep(std::time::Duration::from_millis(20))
+                }
+                other => return other,
+            }
+        }
+    }
+    fs::rename(from, to)
+}
+
+/// Chemin absolu canonique, sans le préfixe `\\?\` que Windows ajoute
+/// (`C:\…` au lieu de `\\?\C:\…`) : git, les hooks et l'utilisateur ne le comprennent pas.
+pub fn canonicalize(path: &Path) -> std::io::Result<PathBuf> {
+    Ok(simplify_verbatim(path.canonicalize()?))
+}
+
+/// Retire le préfixe verbatim `\\?\` quand le chemin a une forme classique équivalente
+/// (lecteur `X:\…` ou partage `\\serveur\…`). Sans effet ailleurs que sous Windows.
+fn simplify_verbatim(path: PathBuf) -> PathBuf {
+    let Some(s) = path.to_str() else { return path };
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match s.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().first().is_some_and(u8::is_ascii_alphabetic) && rest.get(1..3) == Some(r":\") => {
+            PathBuf::from(rest)
+        }
+        _ => path,
+    }
 }
 
 /// Écrit seulement si le contenu change. Retourne true si le fichier a été écrit.
@@ -79,5 +118,19 @@ impl ProjectLock {
             .with_context(|| format!("ouverture du verrou {}", path.display()))?;
         file.lock().with_context(|| format!("prise du verrou {}", path.display()))?;
         Ok(ProjectLock { _file: file })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prefixe_verbatim_retire() {
+        let s = |p: &str| simplify_verbatim(PathBuf::from(p)).to_string_lossy().into_owned();
+        assert_eq!(s(r"\\?\C:\Users\a\projet"), r"C:\Users\a\projet");
+        assert_eq!(s(r"\\?\UNC\serveur\partage\x"), r"\\serveur\partage\x");
+        assert_eq!(s(r"\\?\Volume{abc}\x"), r"\\?\Volume{abc}\x");
+        assert_eq!(s("/Users/a/projet"), "/Users/a/projet");
     }
 }
