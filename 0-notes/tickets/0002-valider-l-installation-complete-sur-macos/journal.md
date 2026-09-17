@@ -54,3 +54,26 @@ Critère 4 vérifié et coché. L'utilisateur a changé à la main, dans son éd
 - Statut remis à `todo` avec `ticket_set_status`, ce qui a ajouté une entrée explicative au journal du 0005. BOARD.md et le ticket.md du 0005 sont de nouveau identiques à HEAD, et `notes_validate` ne signale aucun problème.
 
 **Prochaine étape :** Critère 5 : faire un commit sur la branche ci/0002 depuis le terminal et vérifier que le hook ajoute le trailer « Ticket: 0002 ». Refaire ensuite l'essai depuis le client git graphique habituel de l'utilisateur, pour voir si le PATH de launchd fait échouer le hook.
+
+## 2026-09-17 14:43 — avancement
+
+Critère 5 : moitié terminal OK, moitié client graphique en échec. Critère **non coché**.
+- Terminal : le commit 1f199aa a été accepté et le hook prepare-commit-msg a ajouté le trailer « Ticket: 0002 ».
+- Client graphique, simulé comme demandé par l'utilisateur avec le PATH de launchd : `env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin git commit --allow-empty -m "test PATH graphique"` est refusé par le hook pre-commit, code 1, message « coutcouticket introuvable dans le PATH. Installer le binaire (voir README) ou contourner ponctuellement avec --no-verify. ». Aucun commit créé (HEAD reste 1f199aa), donc rien à annuler.
+- Cause : les hooks générés par `init` cherchent `coutcouticket` via `command -v`. Le PATH de launchd ne contient ni ~/.cargo/bin ni /opt/homebrew/bin. Un client git lancé depuis le Dock bloquerait donc tous les commits du projet.
+- À corriger dans le ticket fix prévu (par exemple écrire dans les hooks le chemin absolu du binaire, avec repli sur le PATH). Ensuite, refaire cette même commande pour cocher le critère.
+
+**Prochaine étape :** Critère 6 : obtenir de l'utilisateur le nom du projet existant. Dans ce projet, vérifier que `git status` est propre, relever CLAUDE.md et les hooks existants (.git/hooks, core.hooksPath, husky, lefthook), lancer `coutcouticket init`, puis montrer `git status` et `git diff` et vérifier que CLAUDE.md et les hooks sont intacts.
+
+## 2026-09-17 14:44 — avancement
+
+Bilan demandé par l'utilisateur. Ticket **non clôturé** : 3 critères sur 6 restent ouverts.
+- Critère 1 (démon après redémarrage de session) : non coché. KeepAlive est prouvé ; il manque la preuve de RunAtLoad après une vraie déconnexion ou un redémarrage macOS.
+- Critère 2 (setup-claude --apply) : coché maintenant, sur la base de la vérification de 14:33. Le défaut de ré-exécution est suivi dans le ticket 0007.
+- Critères 3 et 4 : cochés (voir les entrées précédentes).
+- Critère 5 (hooks git) : non coché. Le terminal fonctionne, mais le hook échoue avec le PATH de launchd. Correction suivie dans le ticket 0006.
+- Critère 6 (init sur un vrai projet) : non fait. Le nom du projet cible n'a pas encore été donné.
+Tickets fix créés : 0006 (hooks git hors terminal, p1) et 0007 (setup-claude --apply idempotent, p2).
+Le 0001 reste en review : son journal subordonne le passage en done à la validation du 0002.
+
+**Prochaine étape :** Obtenir de l'utilisateur le projet cible du critère 6 et y lancer `coutcouticket init` (git status propre d'abord, puis relever CLAUDE.md et les hooks existants et vérifier qu'ils sont intacts). Après une fermeture de session macOS, prouver le critère 1 avec `ps -o pid,lstart -p $(pgrep -f 'coutcouticket daemon run')` et `coutcouticket daemon status`.
