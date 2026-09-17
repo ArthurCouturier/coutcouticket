@@ -2,7 +2,7 @@
 id: "0018"
 title: "Ne pas attribuer au ticket de la branche un commit de notes d'autres tickets"
 type: fix
-status: in-progress
+status: done
 priority: p2
 projects: [core]
 created: 2026-09-17
@@ -17,9 +17,9 @@ Objectif : quand le commit ne touche que des notes (`0-notes/tickets/<id>-…`) 
 
 ## Critères d'acceptation
 
-- [ ] Un commit sur la branche d'un ticket qui ne modifie que les notes d'autres tickets ne reçoit pas le trailer de la branche (ou reçoit ceux des tickets touchés, selon la décision consignée)
-- [ ] files <id> n'inclut pas les notes d'autres tickets
-- [ ] Test e2e couvrant le cas
+- [x] Un commit sur la branche d'un ticket qui ne modifie que les notes d'autres tickets ne reçoit pas le trailer de la branche (ou reçoit ceux des tickets touchés, selon la décision consignée)
+- [x] files <id> n'inclut pas les notes d'autres tickets
+- [x] Test e2e couvrant le cas
 
 ## Notes
 
