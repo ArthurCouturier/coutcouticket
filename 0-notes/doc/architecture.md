@@ -25,6 +25,7 @@ appellent le cœur, rien de plus.
 | `board.rs` | rendu déterministe de `BOARD.md` |
 | `init.rs` | création et réparation idempotentes de l'arborescence, bloc CLAUDE.md, hooks git |
 | `git.rs` | appels au binaire git |
+| `claude.rs` | `setup-claude` : lecture de `claude mcp get`, ajout ou remplacement idempotent |
 | `fsutil.rs` | écriture atomique, écriture si changement, verrou inter-processus |
 | `templates.rs` + `templates/` | contenus embarqués dans le binaire |
 
@@ -63,6 +64,19 @@ appellent le cœur, rien de plus.
   à écouter après l'ouverture de session. Une session Claude Code ouverte dans ce
   délai n'a pas le MCP (connexion refusée, `/mcp` pour reconnecter).
 
+### Enregistrement dans Claude Code (`claude.rs`)
+
+- `setup-claude --apply` : `claude mcp get coutcouticket` → absent (code ≠ 0) : `add` ;
+  identique (transport, URL, en-têtes) : rien ; différent : `remove --scope <portée lue>`
+  puis nouvelle lecture, en boucle bornée (6 étapes), jusqu'à l'état attendu.
+- `claude` n'a pas de sortie JSON pour `mcp get` : on lit le texte (`Type:`, `URL:`,
+  bloc `Headers:` indenté, portée via la ligne « claude mcp remove … -s <portée> » ou `Scope:`).
+  Un changement de format de Claude Code casse `parse_get` : tests unitaires dédiés.
+- Piège : `claude mcp add` refuse un nom existant, quelle que soit la valeur. Et une
+  portée `local`/`project` masque la portée `user` : elle est retirée aussi.
+- Les jetons (`Bearer …`) sont masqués dans les messages d'erreur qui reprennent la
+  sortie de `claude`. Binaire surchargeable par `COUTCOUTICKET_CLAUDE_BIN`.
+
 ### Pièges du watcher
 
 - Ne compter que les écritures (`write_paths`) : les événements de lecture
@@ -89,4 +103,5 @@ appellent le cœur, rien de plus.
 - `tests/e2e.rs` : binaire réel dans un dépôt git temporaire, avec
   `COUTCOUTICKET_HOME` isolé. Couvre le workflow et les hooks, le MCP stdio, et le
   démon HTTP (authentification, Origin, watcher sous lecture continue), les hooks
-  avec le PATH de launchd et le .gitignore des notes.
+  avec le PATH de launchd, le .gitignore des notes, et `setup-claude --apply` avec un
+  faux `claude` (script shell : absent, identique, différent, autre portée, échec).

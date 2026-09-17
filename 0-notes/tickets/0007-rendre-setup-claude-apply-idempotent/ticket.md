@@ -2,7 +2,7 @@
 id: "0007"
 title: "Rendre setup-claude --apply idempotent"
 type: fix
-status: todo
+status: review
 priority: p2
 projects: [core]
 created: 2026-09-17
@@ -19,10 +19,12 @@ Objectif : relancer la commande doit être sans danger. Si l'enregistrement exis
 
 ## Critères d'acceptation
 
-- [ ] Deux `setup-claude --apply` successifs : le second se termine avec le code 0 et indique que l'enregistrement est déjà à jour
+- [x] Deux `setup-claude --apply` successifs : le second se termine avec le code 0 et indique que l'enregistrement est déjà à jour
 - [ ] Enregistrement existant avec un autre jeton ou une autre URL : il est remplacé, et `claude mcp list` montre la nouvelle valeur
-- [ ] Aucun message d'erreur ne propose une commande manuelle qui échouerait de la même façon
-- [ ] Test couvrant les cas « absent », « identique » et « différent » (binaire claude simulé)
+- [x] Aucun message d'erreur ne propose une commande manuelle qui échouerait de la même façon
+- [x] Test couvrant les cas « absent », « identique » et « différent » (binaire claude simulé)
 
 ## Notes
+
+- Critère 2 prouvé avec le binaire `claude` simulé (`tests/e2e.rs`, `setup_claude_idempotent`) ; vérification réelle restante côté utilisateur (voir journal).
 
