@@ -8,3 +8,4 @@ les `decisions.md` des tickets.
 |------|-------|-------------|
 <!-- Exemple : | [auth.md](auth.md) | Authentification, tokens | on touche au login, aux sessions ou aux droits | -->
 | [architecture.md](architecture.md) | Modules, invariants, démon, watcher, hooks git, .gitignore, tests | on modifie le code de coutcouticket, on ajoute un champ ou un outil, on touche au démon, aux hooks git ou à init |
+| [distribution.md](distribution.md) | Workflows CI et release, install.sh, mise à jour du binaire et du démon | on publie une version, on touche à `.github/`, à `install.sh`, à `daemon install` ou au chemin du binaire |
