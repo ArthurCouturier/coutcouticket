@@ -1,5 +1,5 @@
 <!-- GÉNÉRÉ par coutcouticket — ne pas éditer. Régénérer : coutcouticket board -->
-# Tableau des tickets — 0023
+# Tableau des tickets — coutcouticket
 
 **15 ouvert(s)** sur 25 · 0 en cours · 2 en revue · 0 bloqué · 13 à faire · 10 terminé · 0 annulé
 
