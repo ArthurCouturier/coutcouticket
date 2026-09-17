@@ -2,7 +2,7 @@
 id: "0005"
 title: "Subagent relecteur de clôture"
 type: feat
-status: todo
+status: done
 priority: p3
 projects: [plugin]
 created: 2026-09-17
@@ -15,7 +15,7 @@ Un subagent au contexte isolé qui vérifie avant clôture : critères d'accepta
 
 ## Critères d'acceptation
 
-- [ ] Subagent livré dans le plugin et invoqué par la procédure Clôturer du skill
+- [x] Subagent livré dans le plugin et invoqué par la procédure Clôturer du skill
 
 ## Notes
 
