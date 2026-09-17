@@ -1,27 +1,28 @@
 <!-- GÉNÉRÉ par coutcouticket — ne pas éditer. Régénérer : coutcouticket board -->
 # Tableau des tickets — coutcouticket
 
-**13 ouvert(s)** sur 17 · 0 en cours · 0 en revue · 0 bloqué · 13 à faire · 4 terminé · 0 annulé
+**13 ouvert(s)** sur 17 · 0 en cours · 1 en revue · 0 bloqué · 12 à faire · 4 terminé · 0 annulé
 
 ## En cours (0)
 
 _Aucun ticket._
 
-## En revue (0)
+## En revue (1)
 
-_Aucun ticket._
+| ID | Titre | Type | Prio | Projets | MAJ |
+|----|-------|------|------|---------|-----|
+| [0007](../tickets/0007-rendre-setup-claude-apply-idempotent/ticket.md) | Rendre setup-claude --apply idempotent | fix | p2 | core | 2026-09-17 |
 
 ## Bloqué (0)
 
 _Aucun ticket._
 
-## À faire (13)
+## À faire (12)
 
 | ID | Titre | Type | Prio | Projets | MAJ |
 |----|-------|------|------|---------|-----|
 | [0009](../tickets/0009-rendre-le-demon-joignable-des-l-ouverture-de/ticket.md) | Rendre le démon joignable dès l'ouverture de session macOS | fix | p1 | daemon | 2026-09-17 |
 | [0003](../tickets/0003-distribuer-le-binaire-sans-toolchain-rust/ticket.md) | Distribuer le binaire sans toolchain Rust | ci | p2 | core | 2026-09-17 |
-| [0007](../tickets/0007-rendre-setup-claude-apply-idempotent/ticket.md) | Rendre setup-claude --apply idempotent | fix | p2 | core | 2026-09-17 |
 | [0004](../tickets/0004-dependances-entre-tickets-blocked-by/ticket.md) | Dépendances entre tickets (blocked_by) | feat | p3 | core, mcp | 2026-09-17 |
 | [0005](../tickets/0005-subagent-relecteur-de-cloture/ticket.md) | Subagent relecteur de clôture | feat | p3 | plugin | 2026-09-17 |
 | [0010](../tickets/0010-a-valider-commande-doctor-de-diagnostic-complet/ticket.md) | À valider : commande doctor de diagnostic complet | feat | p3 | core | 2026-09-17 |
@@ -50,7 +51,7 @@ _Aucun ticket._
 
 | Projet | En cours | En revue | Bloqué | À faire | Terminé | Annulé |
 |--------|---|---|---|---|---|---|
-| core | 0 | 0 | 0 | 10 | 3 | 0 |
+| core | 0 | 1 | 0 | 9 | 3 | 0 |
 | daemon | 0 | 0 | 0 | 4 | 2 | 0 |
 | mcp | 0 | 0 | 0 | 4 | 1 | 0 |
 | plugin | 0 | 0 | 0 | 3 | 2 | 0 |

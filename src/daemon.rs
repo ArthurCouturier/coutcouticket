@@ -409,22 +409,6 @@ pub fn uninstall() -> Result<String> {
 }
 
 /// Commande d'enregistrement du serveur MCP dans Claude Code (portée utilisateur).
-pub fn claude_add_args() -> Result<Vec<String>> {
-    let cfg = DaemonConfig::load_or_create()?;
-    Ok(vec![
-        "mcp".into(),
-        "add".into(),
-        "--transport".into(),
-        "http".into(),
-        "--scope".into(),
-        "user".into(),
-        "coutcouticket".into(),
-        format!("http://127.0.0.1:{}/mcp", cfg.port),
-        "--header".into(),
-        format!("Authorization: Bearer {}", cfg.token),
-    ])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
