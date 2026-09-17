@@ -41,12 +41,18 @@ coutcouticket daemon status         # → « coutcouticket 0.1.0 ok »
 coutcouticket setup-claude --apply  # enregistre le MCP du démon dans Claude Code (portée utilisateur)
 ```
 
-Plugin Claude Code (skill `ticket` + hook de démarrage de session), dans Claude Code :
+Plugin Claude Code (skill `ticket`, subagent `relecteur-cloture` + hook de démarrage de
+session), dans Claude Code :
 
 ```
 /plugin marketplace add ~/dev/coutcouticket
 /plugin install coutcouticket@coutcouticket
 ```
+
+Le subagent `coutcouticket:relecteur-cloture` relit un ticket avant sa clôture, en
+lecture seule et avec un contexte neuf : critères cochés réellement prouvés, doc et
+`INDEX.md` à jour, journal final prêt. Il rend un verdict `OK` ou `À CORRIGER`. La
+procédure « Clôturer » du skill l'invoque avant `status done`.
 
 `~/.cargo/bin` doit être dans le `PATH` : le hook de session appelle `coutcouticket`.
 Les hooks git, eux, appellent le binaire par le chemin noté lors de `init` (avec repli
