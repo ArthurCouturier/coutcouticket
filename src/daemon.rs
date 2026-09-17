@@ -41,12 +41,29 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+/// Ligne du journal du démon, horodatée à la milliseconde : permet de mesurer le
+/// délai entre le lancement du processus et l'écoute (voir `daemon.log`).
+macro_rules! log {
+    ($($arg:tt)*) => {
+        eprintln!("{} coutcouticket : {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f"), format_args!($($arg)*))
+    };
+}
+
 pub async fn run() -> Result<()> {
+    let started = Instant::now();
+    log!("lancement du démon {} (pid {}){}", env!("CARGO_PKG_VERSION"), std::process::id(), exec_delay());
+
+    // L'écoute passe avant tout le reste : une session Claude Code ouverte juste
+    // après la connexion doit trouver le port ouvert. Les connexions arrivées
+    // avant `axum::serve` attendent dans la file du noyau au lieu d'être refusées.
     let cfg = DaemonConfig::load_or_create()?;
+    let addr = format!("127.0.0.1:{}", cfg.port);
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .with_context(|| format!("impossible d'écouter sur {addr} (démon déjà lancé ?)"))?;
+    log!("démon à l'écoute sur http://{addr}/mcp ({} ms après le début de run)", started.elapsed().as_millis());
+
     let ct = CancellationToken::new();
-
-    let watcher_stop = spawn_watcher()?;
-
     let service: StreamableHttpService<TicketServer, LocalSessionManager> = StreamableHttpService::new(
         || Ok(TicketServer::new(Mode::Daemon)),
         Default::default(),
@@ -80,11 +97,9 @@ pub async fn run() -> Result<()> {
         .layer(auth)
         .route("/health", get(|| async { format!("coutcouticket {} ok", env!("CARGO_PKG_VERSION")) }));
 
-    let addr = format!("127.0.0.1:{}", cfg.port);
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .with_context(|| format!("impossible d'écouter sur {addr} (démon déjà lancé ?)"))?;
-    eprintln!("coutcouticket : démon à l'écoute sur http://{addr}/mcp");
+    // Le watcher (registre, FSEvents, régénération initiale des boards) peut être
+    // lent à l'ouverture de session : il s'initialise dans son thread, port déjà ouvert.
+    let watcher_stop = spawn_watcher(started)?;
 
     let shutdown = {
         let ct = ct.clone();
@@ -95,8 +110,41 @@ pub async fn run() -> Result<()> {
     };
     axum::serve(listener, app).with_graceful_shutdown(shutdown).await?;
     let _ = watcher_stop.send(());
-    eprintln!("coutcouticket : démon arrêté");
+    log!("démon arrêté");
     Ok(())
+}
+
+/// Délai entre le lancement du processus (exec par launchd) et l'entrée dans
+/// `run`, pour distinguer un démarrage lent du système d'une initialisation lente.
+#[cfg(target_os = "macos")]
+fn exec_delay() -> String {
+    let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
+    // SAFETY : tampon de la taille exacte attendue pour PROC_PIDTBSDINFO.
+    let n = unsafe {
+        libc::proc_pidinfo(
+            std::process::id() as libc::c_int,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            (&raw mut info).cast(),
+            size,
+        )
+    };
+    if n != size {
+        return String::new();
+    }
+    let start = std::time::UNIX_EPOCH
+        + Duration::from_secs(info.pbi_start_tvsec)
+        + Duration::from_micros(info.pbi_start_tvusec);
+    match std::time::SystemTime::now().duration_since(start) {
+        Ok(d) => format!(", processus lancé il y a {} ms", d.as_millis()),
+        Err(_) => String::new(),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn exec_delay() -> String {
+    String::new()
 }
 
 async fn wait_for_signal() {
@@ -140,7 +188,7 @@ fn load_watched() -> Watched {
 
 /// Lance le thread de surveillance. Événementiel (FSEvents sur macOS) : aucun
 /// polling, aucun CPU consommé quand rien ne change.
-fn spawn_watcher() -> Result<mpsc::Sender<()>> {
+fn spawn_watcher(started: Instant) -> Result<mpsc::Sender<()>> {
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
     let (ev_tx, ev_rx) = mpsc::channel::<notify::Result<notify::Event>>();
     let registry_path = Registry::path()?;
@@ -151,7 +199,7 @@ fn spawn_watcher() -> Result<mpsc::Sender<()>> {
         let mut watcher = match notify::recommended_watcher(ev_tx) {
             Ok(w) => w,
             Err(e) => {
-                eprintln!("coutcouticket : surveillance indisponible : {e}");
+                log!("surveillance indisponible : {e}");
                 return;
             }
         };
@@ -163,6 +211,11 @@ fn spawn_watcher() -> Result<mpsc::Sender<()>> {
         for (root, _) in &watched.projects {
             regenerate(root);
         }
+        log!(
+            "surveillance prête ({} projet(s), {} ms après le début de run)",
+            watched.projects.len(),
+            started.elapsed().as_millis()
+        );
 
         let debounce = Duration::from_millis(300);
         let max_wait = Duration::from_secs(2);
@@ -203,7 +256,7 @@ fn spawn_watcher() -> Result<mpsc::Sender<()>> {
                 }
             }
             if std::env::var_os("COUTCOUTICKET_DEBUG").is_some() {
-                eprintln!("coutcouticket[debug] écritures : {paths:?}");
+                log!("[debug] écritures : {paths:?}");
             }
 
             let mut registry_changed = false;
@@ -265,19 +318,19 @@ fn rewatch(watcher: &mut impl Watcher, watched: &Watched, active: &mut HashSet<P
     for new in wanted.difference(&active.clone()).cloned().collect::<Vec<_>>() {
         match watcher.watch(&new, RecursiveMode::Recursive) {
             Ok(()) => {
-                eprintln!("coutcouticket : surveillance de {}", new.display());
+                log!("surveillance de {}", new.display());
                 active.insert(new);
             }
-            Err(e) => eprintln!("coutcouticket : impossible de surveiller {} : {e}", new.display()),
+            Err(e) => log!("impossible de surveiller {} : {e}", new.display()),
         }
     }
 }
 
 fn regenerate(root: &Path) {
     match Project::open(root).and_then(|p| p.regenerate_board()) {
-        Ok(true) => eprintln!("coutcouticket : BOARD.md régénéré pour {}", root.display()),
+        Ok(true) => log!("BOARD.md régénéré pour {}", root.display()),
         Ok(false) => {}
-        Err(e) => eprintln!("coutcouticket : échec de régénération pour {} : {e:#}", root.display()),
+        Err(e) => log!("échec de régénération pour {} : {e:#}", root.display()),
     }
 }
 
@@ -323,12 +376,10 @@ pub fn launchd_plist(exe: &Path, log_dir: &Path) -> String {
   <true/>
   <key>ThrottleInterval</key>
   <integer>10</integer>
+  <!-- Interactive : aucun bridage CPU ni disque, pour que le port s'ouvre dès
+       l'ouverture de session. Au repos, le démon ne consomme rien (événementiel). -->
   <key>ProcessType</key>
-  <string>Background</string>
-  <key>LowPriorityIO</key>
-  <true/>
-  <key>Nice</key>
-  <integer>10</integer>
+  <string>Interactive</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
@@ -435,5 +486,19 @@ mod tests {
         assert!(p.contains("<string>/usr/local/bin/coutcouticket</string>"));
         assert!(p.contains(LAUNCHD_LABEL));
         assert_eq!(p.matches("<dict>").count(), p.matches("</dict>").count());
+        assert!(p.contains("<string>/tmp/logs/daemon.log</string>"));
+    }
+
+    /// Pas de bridage launchd : il retardait l'écoute d'environ 1 min après
+    /// l'ouverture de session (ticket 0009).
+    #[test]
+    fn plist_is_not_throttled() {
+        let p = launchd_plist(Path::new("/usr/local/bin/coutcouticket"), Path::new("/tmp/logs"));
+        assert!(p.contains("<key>ProcessType</key>\n  <string>Interactive</string>"));
+        for key in ["Background", "LowPriorityIO", "LowPriorityBackgroundIO", "<key>Nice</key>"] {
+            assert!(!p.contains(key), "clé de bridage inattendue : {key}");
+        }
+        assert!(p.contains("<key>RunAtLoad</key>\n  <true/>"));
+        assert!(p.contains("<key>KeepAlive</key>\n  <true/>"));
     }
 }

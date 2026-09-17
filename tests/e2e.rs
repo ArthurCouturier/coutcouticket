@@ -423,6 +423,40 @@ fn daemon_http_auth_et_watcher() {
     }
 }
 
+/// L'écoute précède l'initialisation du watcher, et le journal est horodaté
+/// pour mesurer le délai de démarrage (ticket 0009).
+#[test]
+fn daemon_ecoute_avant_le_watcher() {
+    let env = Env::new();
+    env.ok(&["init"]);
+    let port = free_port();
+    fs::write(env.home.join("daemon.toml"), format!("port = {port}\ntoken = \"t\"\n")).unwrap();
+    let log = env.home.join("daemon.log");
+    let file = fs::File::create(&log).unwrap();
+    let _daemon = Kill(env.cmd(BIN).args(["daemon", "run"]).stderr(file).spawn().unwrap());
+
+    let start = Instant::now();
+    let text = loop {
+        let text = fs::read_to_string(&log).unwrap();
+        if text.contains("surveillance prête") {
+            break text;
+        }
+        assert!(start.elapsed() < Duration::from_secs(10), "watcher non prêt :\n{text}");
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let pos = |needle: &str| text.find(needle).unwrap_or_else(|| panic!("« {needle} » absent :\n{text}"));
+    assert!(pos("lancement du démon") < pos("à l'écoute"), "{text}");
+    assert!(pos("à l'écoute") < pos("surveillance de "), "{text}");
+    assert!(pos("à l'écoute") < pos("surveillance prête (1 projet(s)"), "{text}");
+    // Chaque ligne commence par « AAAA-MM-JJ HH:MM:SS.mmm coutcouticket : ».
+    for line in text.lines() {
+        let (stamp, rest) = line.split_at_checked(23).unwrap_or_else(|| panic!("ligne non horodatée : {line}"));
+        assert!(stamp.as_bytes()[4] == b'-' && stamp.as_bytes()[10] == b' ' && stamp.as_bytes()[19] == b'.', "{line}");
+        assert!(rest.starts_with(" coutcouticket : "), "{line}");
+    }
+    assert!(TcpStream::connect(("127.0.0.1", port)).is_ok());
+}
+
 
 // ---------------------------------------------------------------------------
 // .gitignore du dossier de notes
