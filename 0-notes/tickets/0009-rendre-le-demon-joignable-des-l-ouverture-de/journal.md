@@ -22,3 +22,9 @@ Reste à vérifier par l'utilisateur (critères 2 et 3). 1) Réinstaller depuis 
 ## 2026-09-17 15:30 — statut : in-progress → review
 
 Code, plist, journal horodaté et tests faits ; à valider par l'utilisateur après réinstallation et redémarrage macOS (procédure dans le journal).
+
+## 2026-09-17 15:55 — avancement
+
+Nouveau binaire installé par l'utilisateur à 15:51 (`cargo install` puis `daemon install`). Plist installé : `ProcessType=Interactive`, aucune clé `Nice` ni `LowPriorityIO`. Journal : « à l'écoute » 0 ms et « surveillance prête » 11 ms après le début de `run`. `daemon status` ok. Il reste à le vérifier après un redémarrage macOS.
+
+**Prochaine étape :** Après le prochain redémarrage macOS, ouvrir aussitôt une session Claude Code et vérifier que coutcouticket est connecté dans /mcp. Puis relever `grep -E 'lancement du démon|à l.écoute' ~/Library/Logs/coutcouticket/daemon.log | tail -2` et `sysctl -n kern.boottime`, cocher les 2 critères restants et clôturer.

@@ -16,3 +16,9 @@ setup-claude --apply rendu idempotent (src/claude.rs) : lecture de « claude mcp
 ## 2026-09-17 15:29 — statut : in-progress → review
 
 À relire : src/claude.rs, Cmd::SetupClaude dans src/main.rs, test e2e setup_claude_idempotent. Reste à vérifier avec le vrai claude (critère 2), procédure dans le journal.
+
+## 2026-09-17 15:55 — avancement
+
+Essai réel avec le binaire installé à 15:51 : deux `setup-claude --apply` successifs renvoient chacun le code 0 et le message « enregistrement à jour, rien à faire ». `claude mcp get` : portée user, connecté. Le cas « enregistrement différent » n'a pas été essayé en réel : la modification de la config Claude Code a été refusée par le mode auto de la session.
+
+**Prochaine étape :** L'utilisateur, dans son terminal : `claude mcp remove coutcouticket -s user && claude mcp add --scope user --transport http coutcouticket http://127.0.0.1:1/mcp`, puis `coutcouticket setup-claude --apply`, puis `claude mcp get coutcouticket` (attendu : URL en port 47813, connecté). Cocher alors le critère 2 et clôturer.
