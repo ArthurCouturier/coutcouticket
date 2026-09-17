@@ -1,0 +1,11 @@
+{
+  "name": "coutcouticket",
+  "owner": { "name": "Arthur" },
+  "plugins": [
+    {
+      "name": "coutcouticket",
+      "source": "./plugin",
+      "description": "Tickets, journal, décisions et doc technique en Markdown dans 0-notes/, pilotés par le MCP coutcouticket."
+    }
+  ]
+}

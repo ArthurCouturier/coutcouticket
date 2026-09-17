@@ -1,0 +1,6 @@
+{
+  "name": "coutcouticket",
+  "version": "0.1.0",
+  "description": "Skill « ticket » et hook de démarrage de session pour le système de tickets coutcouticket.",
+  "author": { "name": "Arthur" }
+}

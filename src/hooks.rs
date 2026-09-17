@@ -1,0 +1,141 @@
+//! Hooks : git (pre-commit, prepare-commit-msg) et Claude Code (SessionStart).
+
+use std::io::Read;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Result, bail};
+
+use crate::config::{Registry, find_root};
+use crate::git;
+use crate::model::Status;
+use crate::naming::{self, BranchKind};
+use crate::store::{Project, last_next_step, JOURNAL_FILE};
+
+fn open_here() -> Result<Option<Project>> {
+    let cwd = std::env::current_dir()?;
+    if find_root(&cwd).is_err() {
+        return Ok(None);
+    }
+    Ok(Some(Project::open(&cwd)?))
+}
+
+/// pre-commit : convention de branche stricte, ticket existant, notes valides.
+pub fn pre_commit() -> Result<()> {
+    let Some(project) = open_here()? else {
+        eprintln!("coutcouticket : aucun .coutcouticket.toml trouvé, vérifications ignorées");
+        return Ok(());
+    };
+    if let Some(branch) = git::current_branch(&project.root)? {
+        if let BranchKind::Ticket { kind, id, dir } = naming::classify_branch(&branch, &project.cfg)? {
+            let ticket = project.find(id).map_err(|e| {
+                anyhow::anyhow!("branche « {branch} » : {e:#}. Créer le ticket d'abord (ticket_create) puis utiliser ticket_start.")
+            })?;
+            if ticket.dir_name != dir {
+                bail!(
+                    "branche « {branch} » : le dossier du ticket {} est « {} ». Branche attendue : {}",
+                    id.format(project.cfg.id_width),
+                    ticket.dir_name,
+                    naming::branch_name(&ticket.doc.front.kind, &ticket.dir_name)
+                );
+            }
+            if ticket.doc.front.kind != kind {
+                bail!(
+                    "branche « {branch} » : le ticket est de type « {} », branche attendue : {}",
+                    ticket.doc.front.kind,
+                    naming::branch_name(&ticket.doc.front.kind, &ticket.dir_name)
+                );
+            }
+        }
+    }
+    if project.regenerate_board()? {
+        git::add(&project.root, &project.board_path())?;
+        eprintln!("coutcouticket : BOARD.md régénéré et ajouté au commit");
+    }
+    let problems = project.validate()?;
+    if !problems.is_empty() {
+        let list: Vec<String> = problems.iter().map(|p| format!("  - {} : {}", p.path, p.message)).collect();
+        bail!("notes invalides, commit refusé :\n{}", list.join("\n"));
+    }
+    Ok(())
+}
+
+/// prepare-commit-msg : ajoute le trailer `Ticket: <id>` depuis le nom de branche.
+pub fn prepare_commit_msg(msg_file: &Path, source: Option<&str>) -> Result<()> {
+    if source == Some("merge") {
+        return Ok(());
+    }
+    let Some(project) = open_here()? else { return Ok(()) };
+    let Some(branch) = git::current_branch(&project.root)? else { return Ok(()) };
+    if let BranchKind::Ticket { id, .. } = naming::classify_branch(&branch, &project.cfg)? {
+        let msg_path: PathBuf = if msg_file.is_absolute() { msg_file.to_path_buf() } else { std::env::current_dir()?.join(msg_file) };
+        git::add_trailer(&project.root, &msg_path, &id.format(project.cfg.id_width))?;
+    }
+    Ok(())
+}
+
+/// SessionStart (Claude Code) : injecte le contexte du projet et du ticket courant.
+pub fn session_start() -> Result<()> {
+    let mut input = String::new();
+    let _ = std::io::stdin().read_to_string(&mut input);
+    let cwd = serde_json::from_str::<serde_json::Value>(&input)
+        .ok()
+        .and_then(|v| v.get("cwd").and_then(|c| c.as_str()).map(PathBuf::from))
+        .map(Ok)
+        .unwrap_or_else(std::env::current_dir)?;
+    let Ok(root) = find_root(&cwd) else { return Ok(()) };
+    let project = Project::open(&root)?;
+    let text = session_context(&project)?;
+    let out = serde_json::json!({
+        "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": text }
+    });
+    println!("{out}");
+    Ok(())
+}
+
+pub fn session_context(project: &Project) -> Result<String> {
+    let scan = project.scan()?;
+    let count = |s: Status| scan.tickets.iter().filter(|t| t.doc.front.status == s).count();
+    let mut lines = vec![
+        format!("[coutcouticket] Projet : {} (notes dans {}/)", project.root.display(), project.cfg.notes_dir),
+        format!("Paramètre « project » à passer aux outils MCP ticket_* : {}", project.root.display()),
+        format!(
+            "Tickets : {} en cours, {} en revue, {} bloqué(s), {} à faire. Vue complète : {}/0-global/BOARD.md",
+            count(Status::InProgress),
+            count(Status::Review),
+            count(Status::Blocked),
+            count(Status::Todo),
+            project.cfg.notes_dir
+        ),
+    ];
+    if !scan.problems.is_empty() {
+        lines.push(format!("⚠️ {} problème(s) dans les notes : lancer notes_validate.", scan.problems.len()));
+    }
+    if git::is_repo(&project.root) {
+        if let Some(branch) = git::current_branch(&project.root)? {
+            match naming::classify_branch(&branch, &project.cfg) {
+                Ok(BranchKind::Ticket { id, .. }) => match scan.tickets.iter().find(|t| t.doc.front.id == id) {
+                    Some(t) => {
+                        let journal = std::fs::read_to_string(t.path.join(JOURNAL_FILE)).unwrap_or_default();
+                        lines.push(format!(
+                            "Branche courante {branch} → ticket {} « {} » ({}).",
+                            id.format(project.cfg.id_width),
+                            t.doc.front.title,
+                            t.doc.front.status
+                        ));
+                        if let Some(next) = last_next_step(&journal) {
+                            lines.push(format!("Prochaine étape notée : {next}"));
+                        }
+                    }
+                    None => lines.push(format!("⚠️ Branche {branch} : ticket {} introuvable.", id.format(project.cfg.id_width))),
+                },
+                Ok(BranchKind::Exempt) => lines.push(format!("Branche courante : {branch} (hors ticket).")),
+                Err(e) => lines.push(format!("⚠️ {e:#}")),
+            }
+        }
+    }
+    if !Registry::load().map(|r| r.contains(&project.root)).unwrap_or(false) {
+        lines.push("⚠️ Projet non enregistré auprès du démon : lancer « coutcouticket init » ou « coutcouticket projects add ».".into());
+    }
+    lines.push("Pour toute action sur un ticket, suivre le skill « ticket ».".into());
+    Ok(lines.join("\n"))
+}

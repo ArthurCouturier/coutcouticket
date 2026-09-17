@@ -1,0 +1,358 @@
+//! Tests de bout en bout : binaire réel, vrai dépôt git, vrais hooks, vrai MCP.
+
+use std::fs;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpStream;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Output, Stdio};
+use std::time::{Duration, Instant};
+
+const BIN: &str = env!("CARGO_BIN_EXE_coutcouticket");
+
+struct Env {
+    _tmp: tempfile::TempDir,
+    repo: PathBuf,
+    home: PathBuf,
+    path_var: String,
+}
+
+impl Env {
+    fn new() -> Env {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("mon-projet");
+        let home = tmp.path().join("cct-home");
+        fs::create_dir_all(&repo).unwrap();
+        fs::create_dir_all(&home).unwrap();
+        let bin_dir = Path::new(BIN).parent().unwrap();
+        let path_var = format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap());
+        let env = Env { _tmp: tmp, repo, home, path_var };
+        env.git(&["init", "-q", "-b", "main"]);
+        env.git(&["config", "user.email", "test@example.com"]);
+        env.git(&["config", "user.name", "Test"]);
+        env
+    }
+
+    fn cmd(&self, program: &str) -> Command {
+        let mut c = Command::new(program);
+        c.current_dir(&self.repo)
+            .env("COUTCOUTICKET_HOME", &self.home)
+            .env("PATH", &self.path_var)
+            .env_remove("XDG_CONFIG_HOME");
+        c
+    }
+
+    fn cct(&self, args: &[&str]) -> Output {
+        self.cmd(BIN).args(args).output().unwrap()
+    }
+
+    fn ok(&self, args: &[&str]) -> String {
+        let out = self.cct(args);
+        assert!(out.status.success(), "coutcouticket {args:?} a échoué :\n{}\n{}", stdout(&out), stderr(&out));
+        stdout(&out)
+    }
+
+    fn git(&self, args: &[&str]) -> Output {
+        self.cmd("git").args(args).output().unwrap()
+    }
+
+    fn git_ok(&self, args: &[&str]) -> String {
+        let out = self.git(args);
+        assert!(out.status.success(), "git {args:?} a échoué :\n{}\n{}", stdout(&out), stderr(&out));
+        stdout(&out)
+    }
+
+    fn notes(&self) -> PathBuf {
+        self.repo.join("0-notes")
+    }
+}
+
+fn stdout(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stdout).to_string()
+}
+fn stderr(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stderr).to_string()
+}
+
+#[test]
+fn workflow_complet() {
+    let env = Env::new();
+
+    // --- init crée l'arborescence, puis est idempotent
+    let out = env.ok(&["init"]);
+    assert!(out.contains("créé"), "{out}");
+    for p in ["0-global/README.md", "0-global/BOARD.md", "tickets", "doc/INDEX.md"] {
+        assert!(env.notes().join(p).exists(), "{p} manquant");
+    }
+    assert!(env.repo.join(".coutcouticket.toml").is_file());
+    assert!(fs::read_to_string(env.repo.join("CLAUDE.md")).unwrap().contains("coutcouticket:start"));
+    assert!(env.repo.join(".git/hooks/pre-commit").is_file());
+    assert!(fs::read_to_string(env.home.join("projects.toml")).unwrap().contains("mon-projet"));
+    let again = env.ok(&["init"]);
+    assert!(again.contains("déjà complète"), "{again}");
+
+    // --- arborescence partielle réparée par init
+    fs::remove_dir_all(env.notes().join("doc")).unwrap();
+    let repaired = env.ok(&["init"]);
+    assert!(repaired.contains("0-notes/doc/INDEX.md"), "{repaired}");
+
+    // --- création de tickets
+    let out = env.ok(&["new", "-t", "Ajouter l'écran « Mes plantes »", "--projects", "app,backend", "-p", "p1", "-a", "La liste s'affiche"]);
+    assert!(out.contains("0-notes/tickets/0001-ajouter-l-ecran-mes-plantes"), "{out}");
+    assert!(out.contains("feat/0001-ajouter-l-ecran-mes-plantes"), "{out}");
+    env.ok(&["new", "-t", "Corriger le crash au démarrage", "-k", "fix"]);
+    let bad_type = env.cct(&["new", "-t", "x", "-k", "feature"]);
+    assert!(!bad_type.status.success());
+    assert!(stderr(&bad_type).contains("non autorisé"));
+    let board = fs::read_to_string(env.notes().join("0-global/BOARD.md")).unwrap();
+    assert!(board.contains("[0001]") && board.contains("[0002]"), "{board}");
+    assert!(board.contains("| app |"), "{board}");
+    env.ok(&["validate"]);
+
+    // --- commit sur main autorisé
+    env.git_ok(&["add", "-A"]);
+    env.git_ok(&["commit", "-q", "-m", "init notes"]);
+
+    // --- branche non conforme refusée
+    env.git_ok(&["switch", "-q", "-c", "wip"]);
+    fs::write(env.repo.join("a.txt"), "a").unwrap();
+    env.git_ok(&["add", "a.txt"]);
+    let refused = env.git(&["commit", "-q", "-m", "wip"]);
+    assert!(!refused.status.success(), "commit sur « wip » aurait dû être refusé");
+    assert!(stderr(&refused).contains("non conforme"), "{}", stderr(&refused));
+    env.git_ok(&["switch", "-q", "main"]);
+    env.git_ok(&["branch", "-q", "-D", "wip"]);
+
+    // --- branche au mauvais format (id sur 2 chiffres) refusée
+    env.git_ok(&["switch", "-q", "-c", "feat/01-ajouter-l-ecran-mes-plantes"]);
+    let refused = env.git(&["commit", "-q", "-m", "x"]);
+    assert!(!refused.status.success());
+    env.git_ok(&["switch", "-q", "main"]);
+
+    // --- démarrage : branche stricte + statut + trailer automatique
+    let out = env.ok(&["start", "1"]);
+    assert!(out.contains("feat/0001-ajouter-l-ecran-mes-plantes"), "{out}");
+    assert_eq!(env.git_ok(&["branch", "--show-current"]).trim(), "feat/0001-ajouter-l-ecran-mes-plantes");
+    fs::write(env.repo.join("src.rs"), "fn main() {}").unwrap();
+    env.git_ok(&["add", "-A"]);
+    env.git_ok(&["commit", "-q", "-m", "écran mes plantes"]);
+    let msg = env.git_ok(&["log", "-1", "--pretty=%B"]);
+    assert!(msg.contains("Ticket: 0001"), "trailer absent : {msg}");
+
+    // --- journal, décision, contexte
+    env.ok(&["log", "1", "-t", "Liste branchée sur l'API", "-n", "Gérer l'état vide"]);
+    env.ok(&["decide", "1", "-t", "Pagination", "-d", "Curseur", "-a", "Offset", "-w", "Stable si insertions"]);
+    let show = env.ok(&["show", "1", "--json"]);
+    assert!(show.contains("\"last_next_step\": \"Gérer l'état vide\""), "{show}");
+    assert!(show.contains("\"decisions\": 1"), "{show}");
+    assert!(show.contains("\"on_ticket_branch\": true"), "{show}");
+    let bad_log = env.cct(&["log", "1", "-t", "x", "-n", " "]);
+    assert!(!bad_log.status.success());
+
+    // --- fichiers dérivés de git
+    let files = env.ok(&["files", "1"]);
+    assert!(files.contains("src.rs"), "{files}");
+
+    // --- statut et liste
+    env.ok(&["status", "1", "review", "-n", "Prêt à relire"]);
+    let list = env.ok(&["list", "--status", "review"]);
+    assert!(list.contains("0001") && !list.contains("0002"), "{list}");
+    let bad_status = env.cct(&["status", "2", "en-cours"]);
+    assert!(!bad_status.status.success());
+
+    // --- détection des dérives et réparation
+    let t2 = env.notes().join("tickets/0002-corriger-le-crash-au-demarrage");
+    fs::remove_file(t2.join("journal.md")).unwrap();
+    assert!(!env.cct(&["validate"]).status.success());
+    env.ok(&["init"]);
+    env.ok(&["validate"]);
+    let ticket = t2.join("ticket.md");
+    let original = fs::read_to_string(&ticket).unwrap();
+    fs::write(&ticket, original.replace("status: todo", "status: wip")).unwrap();
+    let invalid = env.cct(&["validate"]);
+    assert!(stdout(&invalid).contains("statut invalide"), "{}", stdout(&invalid));
+    fs::write(&ticket, original).unwrap();
+    env.ok(&["board"]);
+    env.ok(&["validate"]);
+
+    // --- hook SessionStart de Claude Code
+    let mut child = env
+        .cmd(BIN)
+        .args(["hook", "session-start"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let payload = format!("{{\"cwd\": {:?}, \"hook_event_name\": \"SessionStart\"}}", env.repo.display().to_string());
+    child.stdin.take().unwrap().write_all(payload.as_bytes()).unwrap();
+    let out = child.wait_with_output().unwrap();
+    let text = stdout(&out);
+    assert!(text.contains("additionalContext"), "{text}");
+    assert!(text.contains("Gérer l'état vide"), "{text}");
+}
+
+// ---------------------------------------------------------------------------
+// MCP stdio
+// ---------------------------------------------------------------------------
+
+fn send(stdin: &mut impl Write, msg: serde_json::Value) {
+    writeln!(stdin, "{msg}").unwrap();
+    stdin.flush().unwrap();
+}
+
+fn recv(reader: &mut impl BufRead, id: i64) -> serde_json::Value {
+    loop {
+        let mut line = String::new();
+        assert!(reader.read_line(&mut line).unwrap() > 0, "flux MCP fermé");
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        if v.get("id").and_then(|x| x.as_i64()) == Some(id) {
+            return v;
+        }
+    }
+}
+
+#[test]
+fn mcp_stdio() {
+    let env = Env::new();
+    env.ok(&["init"]);
+    let mut child = env
+        .cmd(BIN)
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut reader = BufReader::new(child.stdout.take().unwrap());
+
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}));
+    let init = recv(&mut reader, 1);
+    assert_eq!(init["result"]["serverInfo"]["name"], "coutcouticket", "{init}");
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"}));
+
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}));
+    let tools = recv(&mut reader, 2);
+    let names: Vec<String> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
+    for expected in ["ticket_create", "ticket_start", "ticket_set_status", "ticket_log", "ticket_decide", "ticket_list", "ticket_context", "ticket_files", "notes_validate"] {
+        assert!(names.contains(&expected.to_string()), "outil {expected} absent : {names:?}");
+    }
+    let status_schema = tools["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "ticket_set_status").unwrap().to_string();
+    assert!(status_schema.contains("in-progress"), "enum de statut absent du schéma : {status_schema}");
+
+    let repo = env.repo.display().to_string();
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ticket_create","arguments":{"project":repo,"title":"Via MCP","type":"design","acceptance":["ok"]}}}));
+    let created = recv(&mut reader, 3).to_string();
+    assert!(created.contains("design/0001-via-mcp"), "{created}");
+
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ticket_set_status","arguments":{"project":repo,"id":"1","status":"en cours"}}}));
+    let invalid = recv(&mut reader, 4).to_string();
+    assert!(invalid.contains("error") || invalid.contains("isError"), "statut invalide accepté : {invalid}");
+
+    send(&mut stdin, serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"notes_validate","arguments":{"project":repo}}}));
+    let valid = recv(&mut reader, 5).to_string();
+    assert!(valid.contains("notes valides"), "{valid}");
+
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+// ---------------------------------------------------------------------------
+// Démon HTTP
+// ---------------------------------------------------------------------------
+
+struct Kill(Child);
+impl Drop for Kill {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+}
+
+fn http(port: u16, method: &str, path: &str, headers: &[(&str, &str)], body: &str) -> (u16, String, String) {
+    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut req = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nContent-Length: {}\r\n", body.len());
+    for (k, v) in headers {
+        req.push_str(&format!("{k}: {v}\r\n"));
+    }
+    req.push_str("\r\n");
+    req.push_str(body);
+    s.write_all(req.as_bytes()).unwrap();
+    let mut resp = String::new();
+    let _ = s.read_to_string(&mut resp);
+    let status: u16 = resp.split_whitespace().nth(1).unwrap_or("0").parse().unwrap_or(0);
+    let (head, body) = resp.split_once("\r\n\r\n").unwrap_or((&resp, ""));
+    (status, head.to_string(), body.to_string())
+}
+
+#[test]
+fn daemon_http_auth_et_watcher() {
+    let env = Env::new();
+    env.ok(&["init"]);
+    env.ok(&["new", "-t", "Premier ticket"]);
+    let port = free_port();
+    let token = "jeton-de-test";
+    fs::write(env.home.join("daemon.toml"), format!("port = {port}\ntoken = \"{token}\"\n")).unwrap();
+    let _daemon = Kill(env.cmd(BIN).args(["daemon", "run"]).stderr(Stdio::null()).spawn().unwrap());
+
+    let start = Instant::now();
+    while TcpStream::connect(("127.0.0.1", port)).is_err() {
+        assert!(start.elapsed() < Duration::from_secs(10), "le démon ne démarre pas");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(env.ok(&["daemon", "status"]).contains("ok"));
+
+    let init = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}"#;
+    let accept = ("Accept", "application/json, text/event-stream");
+    let ctype = ("Content-Type", "application/json");
+    let bearer = format!("Bearer {token}");
+
+    let (st, _, _) = http(port, "POST", "/mcp", &[accept, ctype], init);
+    assert_eq!(st, 401, "sans jeton : doit être refusé");
+    let (st, _, _) = http(port, "POST", "/mcp", &[accept, ctype, ("Authorization", "Bearer faux")], init);
+    assert_eq!(st, 401, "mauvais jeton : doit être refusé");
+    let (st, _, _) = http(port, "POST", "/mcp", &[accept, ctype, ("Authorization", &bearer), ("Origin", "http://evil.example")], init);
+    assert_eq!(st, 403, "Origin navigateur : doit être refusé");
+
+    let (st, head, body) = http(port, "POST", "/mcp", &[accept, ctype, ("Authorization", &bearer)], init);
+    assert_eq!(st, 200, "{head}\n{body}");
+    assert!(body.contains("coutcouticket"), "{body}");
+    let session = head
+        .lines()
+        .find_map(|l| l.to_ascii_lowercase().starts_with("mcp-session-id:").then(|| l.split_once(':').unwrap().1.trim().to_string()))
+        .expect("en-tête mcp-session-id absent");
+    let sess = ("Mcp-Session-Id", session.as_str());
+    let proto = ("MCP-Protocol-Version", "2025-06-18");
+    http(port, "POST", "/mcp", &[accept, ctype, ("Authorization", &bearer), sess, proto], r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#);
+
+    // project obligatoire en mode démon
+    let (_, _, body) = http(port, "POST", "/mcp", &[accept, ctype, ("Authorization", &bearer), sess, proto],
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ticket_list","arguments":{}}}"#);
+    assert!(body.contains("obligatoire"), "{body}");
+
+    let call = serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ticket_list","arguments":{"project": env.repo.display().to_string()}}}).to_string();
+    let (_, _, body) = http(port, "POST", "/mcp", &[accept, ctype, ("Authorization", &bearer), sess, proto], &call);
+    assert!(body.contains("Premier ticket"), "{body}");
+
+    // watcher : une édition manuelle doit régénérer BOARD.md, même pendant que
+    // quelqu'un relit les notes en continu (la boucle ci-dessous lit toutes les 100 ms,
+    // ce qui empêchait la régénération avant la correction de l'anti-rebond)
+    let ticket = env.notes().join("tickets/0001-premier-ticket/ticket.md");
+    let content = fs::read_to_string(&ticket).unwrap();
+    fs::write(&ticket, content.replace("priority: p2", "priority: p0")).unwrap();
+    let board = env.notes().join("0-global/BOARD.md");
+    let start = Instant::now();
+    loop {
+        if fs::read_to_string(&board).unwrap().contains("| p0 |") {
+            break;
+        }
+        assert!(start.elapsed() < Duration::from_secs(10), "BOARD.md non régénéré par le watcher");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+

@@ -1,0 +1,19 @@
+# Configuration coutcouticket de ce projet.
+# Toute clé absente prend sa valeur par défaut.
+
+# Dossier des notes (tickets, doc, vue globale).
+notes_dir = "0-notes"
+
+# Types de ticket = préfixes de branche. Branche : <type>/<id>-<slug>
+branch_types = ["feat", "fix", "refacto", "design", "ci"]
+default_type = "feat"
+
+# Branches dispensées de la convention.
+exempt_branches = ["main", "master", "develop", "dev", "stag", "staging"]
+
+# Largeur des identifiants (4 → 0001 à 9999).
+id_width = 4
+slug_max_len = 50
+
+# Valeurs autorisées pour « projects » dans les tickets. Vide = libre.
+projects = ["core", "mcp", "daemon", "plugin"]
