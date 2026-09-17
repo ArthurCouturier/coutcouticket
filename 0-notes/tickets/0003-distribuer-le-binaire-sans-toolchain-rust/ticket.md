@@ -2,7 +2,7 @@
 id: "0003"
 title: "Distribuer le binaire sans toolchain Rust"
 type: ci
-status: review
+status: done
 priority: p2
 projects: [core]
 created: 2026-09-17
@@ -15,7 +15,7 @@ Aujourd'hui l'installation passe par cargo install. Produire un binaire macOS ar
 
 ## Critères d'acceptation
 
-- [ ] Workflow de release produisant un binaire macOS arm64 (écrit : `.github/workflows/release.yml` ; à confirmer au premier tag poussé)
+- [x] Workflow de release produisant un binaire macOS arm64 (confirmé par v0.1.0, run 35231556877)
 - [x] Procédure de mise à jour documentée (binaire + daemon install)
 
 ## Notes

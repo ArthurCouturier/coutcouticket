@@ -16,3 +16,15 @@ Livré : release.yml (tag v* → vérification tag = version Cargo.toml, cargo t
 ## 2026-09-17 15:30 — statut : in-progress → review
 
 À relire : .github/workflows/release.yml et ci.yml, install.sh, README. Critère 1 en attente du premier tag v0.1.0 poussé après fusion sur main (procédure dans le journal).
+
+## 2026-09-17 16:12 — avancement
+
+Premier tag `v0.1.0` poussé. Le workflow release (run 35231556877) passe : builds aarch64 et x86_64, release https://github.com/ArthurCouturier/coutcouticket/releases/tag/v0.1.0 avec les 2 archives, leurs `.sha256` et `SHA256SUMS`. La CI (run 35231209722) passe sur main.
+`curl …/main/install.sh | sh -s -- --dir <tmp> --no-daemon` : téléchargement, somme vérifiée, binaire Mach-O arm64 installé, `--version` renvoie 0.1.0. Avertissements corrects pour le PATH, le binaire masqué et les hooks. Installation réelle non touchée.
+Point mineur : GitHub signale que `actions/upload-artifact@v4` et `download-artifact@v4` visent Node.js 20, déprécié (exécutées de force sous Node 24).
+
+**Prochaine étape :** Aucune (suite possible : passer les actions artifact à une version Node 24 dans release.yml)
+
+## 2026-09-17 16:13 — statut : review → done
+
+Release v0.1.0 publiée par le workflow (archives macOS arm64 et x86_64, avec leurs sommes). install.sh vérifié, et procédure de mise à jour documentée. Relecture de clôture : OK.
