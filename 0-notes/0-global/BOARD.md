@@ -1,20 +1,19 @@
 <!-- GÉNÉRÉ par coutcouticket — ne pas éditer. Régénérer : coutcouticket board -->
 # Tableau des tickets — coutcouticket
 
-**13 ouvert(s)** sur 26 · 1 en cours · 2 en revue · 0 bloqué · 10 à faire · 13 terminé · 0 annulé
+**13 ouvert(s)** sur 26 · 0 en cours · 3 en revue · 0 bloqué · 10 à faire · 13 terminé · 0 annulé
 
-## En cours (1)
+## En cours (0)
 
-| ID | Titre | Type | Prio | Projets | Bloqué par | MAJ |
-|----|-------|------|------|---------|------------|-----|
-| [0026](../tickets/0026-panneau-web-de-visualisation-des-tickets/ticket.md) | Panneau web de visualisation des tickets | feat | p2 | daemon, core | — | 2026-09-17 |
+_Aucun ticket._
 
-## En revue (2)
+## En revue (3)
 
 | ID | Titre | Type | Prio | Projets | Bloqué par | MAJ |
 |----|-------|------|------|---------|------------|-----|
 | [0009](../tickets/0009-rendre-le-demon-joignable-des-l-ouverture-de/ticket.md) | Rendre le démon joignable dès l'ouverture de session macOS | fix | p1 | daemon | — | 2026-09-17 |
 | [0007](../tickets/0007-rendre-setup-claude-apply-idempotent/ticket.md) | Rendre setup-claude --apply idempotent | fix | p2 | core | — | 2026-09-17 |
+| [0026](../tickets/0026-panneau-web-de-visualisation-des-tickets/ticket.md) | Panneau web de visualisation des tickets | feat | p2 | daemon, core | — | 2026-09-17 |
 
 ## Bloqué (0)
 
@@ -61,7 +60,7 @@ _Aucun ticket._
 
 | Projet | En cours | En revue | Bloqué | À faire | Terminé | Annulé |
 |--------|---|---|---|---|---|---|
-| core | 1 | 1 | 0 | 8 | 11 | 0 |
-| daemon | 1 | 1 | 0 | 3 | 4 | 0 |
+| core | 0 | 2 | 0 | 8 | 11 | 0 |
+| daemon | 0 | 2 | 0 | 3 | 4 | 0 |
 | mcp | 0 | 0 | 0 | 3 | 3 | 0 |
 | plugin | 0 | 0 | 0 | 2 | 3 | 0 |
