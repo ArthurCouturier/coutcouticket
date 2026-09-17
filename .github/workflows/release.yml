@@ -1,0 +1,116 @@
+# Publication d'une release à chaque tag « v<version> ».
+# Procédure : aligner `version` dans Cargo.toml, commiter, puis
+#   git tag v0.2.0 && git push origin v0.2.0
+# Voir 0-notes/doc/distribution.md.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    # Runner Apple Silicon : aarch64 natif (tests complets), x86_64 compilé en croisé.
+    runs-on: macos-15
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            test: true
+          - target: x86_64-apple-darwin
+            test: false
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain Rust
+        run: |
+          rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+          rustup default stable
+
+      - name: Vérifier que le tag correspond à la version de Cargo.toml
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="$(cargo metadata --no-deps --format-version 1 --locked \
+            | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "coutcouticket"))')"
+          if [ "$tag" != "v$version" ]; then
+            echo "::error::Le tag « $tag » ne correspond pas à la version de Cargo.toml ($version). Corriger : aligner Cargo.toml sur le tag (ou supprimer le tag et créer « v$version »)."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Tests
+        if: matrix.test
+        run: cargo test --locked
+
+      - name: Build release
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Signature ad hoc et contrôle
+        run: |
+          bin="target/${{ matrix.target }}/release/coutcouticket"
+          # Signature ad hoc : obligatoire pour exécuter un binaire arm64 ; refaite
+          # au cas où la suppression des symboles l'aurait invalidée.
+          codesign --force --sign - "$bin"
+          codesign --verify --verbose "$bin"
+          lipo -archs "$bin"
+          if [ "${{ matrix.target }}" = "aarch64-apple-darwin" ] || arch -x86_64 /usr/bin/true 2>/dev/null; then
+            "$bin" --version
+          else
+            echo "Rosetta absente : exécution du binaire x86_64 non vérifiée."
+          fi
+
+      - name: Archive et somme SHA-256
+        run: |
+          name="coutcouticket-${{ steps.version.outputs.version }}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp "target/${{ matrix.target }}/release/coutcouticket" README.md "dist/$name/"
+          cd dist
+          tar -czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+          cat "$name.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publier la release GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd dist
+          cat *.sha256 > SHA256SUMS
+          ls -l
+          gh release create "$GITHUB_REF_NAME" \
+            --title "coutcouticket ${GITHUB_REF_NAME#v}" \
+            --generate-notes \
+            --verify-tag \
+            *.tar.gz *.sha256 SHA256SUMS
